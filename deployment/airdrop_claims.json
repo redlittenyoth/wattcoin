@@ -1,0 +1,33 @@
+{
+  "airdrop_config": {
+    "total_allocation": 10000000,
+    "allocation_percentage": 0.01,
+    "max_recipients": 10,
+    "amount_per_user": 1000000,
+    "verification_required": true,
+    "launch_date": "2025-01-20T14:00:00Z"
+  },
+  "eligibility_criteria": {
+    "task_completion_proof": true,
+    "energy_payment_webhook": true,
+    "api_usage_verification": true,
+    "minimum_utility_transactions": 1
+  },
+  "claims": [
+    {
+      "user_id": "beta_user_template",
+      "wallet_address": "placeholder_solana_address",
+      "verification_hash": "placeholder_webhook_proof",
+      "tasks_completed": 0,
+      "claim_status": "pending",
+      "claim_date": null,
+      "notes": "Template entry - replace with actual beta users"
+    }
+  ],
+  "audit_trail": {
+    "created": "2025-01-17T16:15:00Z",
+    "last_updated": "2025-01-17T16:15:00Z",
+    "total_claimed": 0,
+    "remaining_allocation": 10000000
+  }
+}
