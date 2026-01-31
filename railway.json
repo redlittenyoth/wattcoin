@@ -1,0 +1,15 @@
+{
+  "build": {
+    "watchPatterns": [
+      "bridge.py",
+      "requirements.txt",
+      "Procfile",
+      "Dockerfile",
+      "railway.json",
+      "railway.toml"
+    ]
+  },
+  "deploy": {
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
