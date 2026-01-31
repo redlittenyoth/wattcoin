@@ -1,7 +1,13 @@
 """
-Grok-Claude Bridge - Web Interface v1.1.0
+Grok-Claude Bridge - Web Interface v1.2.0
 Human-in-the-loop AI collaboration for WattCoin project
 + Proxy endpoint for external API calls (Moltbook, etc.)
++ Admin dashboard for bounty management
+
+CHANGELOG v1.2.0:
+- Added admin blueprint for bounty dashboard
+- Added /admin/* routes
+- Requires ADMIN_PASSWORD env var for dashboard access
 """
 
 import os
@@ -15,7 +21,15 @@ from openai import OpenAI
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "wattcoin-dev-key-change-in-prod")
 
-# API clients
+# =============================================================================
+# REGISTER ADMIN BLUEPRINT
+# =============================================================================
+from admin_blueprint import admin_bp
+app.register_blueprint(admin_bp)
+
+# =============================================================================
+# API CLIENTS
+# =============================================================================
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 PROXY_SECRET = os.getenv("PROXY_SECRET", "wattcoin-proxy-secret-change-me")
@@ -147,10 +161,15 @@ HTML_TEMPLATE = """
         .status.error { background: #331111; color: #ff6666; }
         .status.success { background: #113311; color: #66ff66; }
         #editPrompt { display: none; margin-top: 15px; }
+        .admin-link { position: fixed; top: 20px; right: 20px; }
+        .admin-link a { color: #888; text-decoration: none; font-size: 14px; }
+        .admin-link a:hover { color: #00ff88; }
     </style>
 </head>
 <body>
-    <h1>⚡ WattCoin Bridge v1.1</h1>
+    <div class="admin-link"><a href="/admin">🔐 Admin Dashboard</a></div>
+    
+    <h1>⚡ WattCoin Bridge v1.2</h1>
     <p class="subtitle">Grok (Strategy) ↔ Claude (Implementation) | Proxy: Active</p>
     
     {% if status %}
@@ -484,10 +503,11 @@ def proxy_moltbook():
 def health():
     return jsonify({
         'status': 'ok', 
-        'version': '1.1.0',
+        'version': '1.2.0',
         'grok': bool(grok_client), 
         'claude': bool(claude_client),
-        'proxy': True
+        'proxy': True,
+        'admin': True
     })
 
 
