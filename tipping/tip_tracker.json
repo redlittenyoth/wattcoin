@@ -1,0 +1,15 @@
+{
+  "config": {
+    "tip_wallet": "TBD",
+    "watt_mint": "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump",
+    "default_amount": 500,
+    "post_id": "f97ae476-f989-4555-a537-3634c6107012"
+  },
+  "tips": [],
+  "stats": {
+    "total_issued": 0,
+    "total_claimed": 0,
+    "total_sent": 0,
+    "total_watt_distributed": 0
+  }
+}
