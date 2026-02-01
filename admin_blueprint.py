@@ -205,8 +205,19 @@ def get_bounty_claims():
         print(f"Error fetching claims: {e}")
         return []
 
+def get_issue_title(issue_number):
+    """Fetch issue title from GitHub."""
+    url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}"
+    try:
+        resp = requests.get(url, headers=github_headers(), timeout=10)
+        if resp.status_code == 200:
+            return resp.json().get("title", "")
+    except:
+        pass
+    return ""
+
 def extract_bounty_amount(title="", body="", labels=None):
-    """Extract bounty amount from PR title, body, or labels (in priority order)."""
+    """Extract bounty amount from PR title, body, linked issue, or labels."""
     import re
     
     # 1. Try PR title: "[BOUNTY] Description - 10000 WATT"
@@ -226,8 +237,19 @@ def extract_bounty_amount(title="", body="", labels=None):
         match = re.search(r'[Bb]ounty[:\s]+(\d{1,3}(?:,?\d{3})*)\s*WATT', body)
         if match:
             return int(match.group(1).replace(',', ''))
+        
+        # 3. Try linked issue: "Closes #6" or "Fixes #6"
+        issue_match = re.search(r'(?:closes|fixes|resolves)\s*#(\d+)', body, re.IGNORECASE)
+        if issue_match:
+            issue_number = int(issue_match.group(1))
+            issue_title = get_issue_title(issue_number)
+            if issue_title:
+                # Look for bounty amount in issue title: "[BOUNTY: 100,000 WATT]"
+                amount_match = re.search(r'(\d{1,3}(?:,?\d{3})*)\s*WATT', issue_title, re.IGNORECASE)
+                if amount_match:
+                    return int(amount_match.group(1).replace(',', ''))
     
-    # 3. Fallback to labels
+    # 4. Fallback to labels
     if labels:
         for label in labels:
             if "bounty" in label.lower():
@@ -1042,18 +1064,27 @@ def payouts():
     data = load_data()
     payout_list = data.get("payouts", [])
     
-    # Backfill missing wallets from PR body
+    # Backfill missing wallets and amounts from PR
     updated = False
     for payout in payout_list:
-        if not payout.get("wallet"):
+        pr = None
+        if not payout.get("wallet") or payout.get("amount", 0) == 0:
             pr = get_pr_detail(payout.get("pr_number"))
-            if pr:
+        
+        if pr:
+            if not payout.get("wallet"):
                 wallet = extract_wallet(pr.get("body", ""))
                 if wallet:
                     payout["wallet"] = wallet
                     updated = True
+            
+            if payout.get("amount", 0) == 0:
+                amount = extract_bounty_amount(pr.get("title", ""), pr.get("body", ""), pr.get("labels", []))
+                if amount > 0:
+                    payout["amount"] = amount
+                    updated = True
     
-    # Save if we backfilled any wallets
+    # Save if we backfilled anything
     if updated:
         save_data(data)
     
