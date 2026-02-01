@@ -580,13 +580,15 @@ def dashboard():
     reviews = data.get("reviews", {})
     
     # Count stats
-    reviewed_count = len([r for r in reviews.values() if r.get("review")])
+    # Count open PRs that don't have a review yet
+    open_pr_numbers = {str(pr.get("number")) for pr in prs}
+    pending_count = len([pr for pr in prs if str(pr.get("number")) not in reviews or not reviews.get(str(pr.get("number")), {}).get("review")])
     approved_count = len([r for r in reviews.values() if r.get("status") == "approved"])
     rejected_count = len([r for r in reviews.values() if r.get("status") == "rejected"])
     
     stats = {
         "open_prs": len(prs),
-        "pending_review": len(prs) - reviewed_count,
+        "pending_review": pending_count,
         "approved": approved_count,
         "rejected": rejected_count
     }
