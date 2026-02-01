@@ -398,12 +398,25 @@ DASHBOARD_TEMPLATE = """
         {% endif %}
         
         <!-- Payout Queue Link -->
-        <div class="mt-8 pt-6 border-t border-gray-700">
+        <div class="mt-8 pt-6 border-t border-gray-700 flex justify-between items-center">
             <a href="{{ url_for('admin.payouts') }}" class="text-green-400 hover:text-green-300">
                 View Payout Queue →
             </a>
+            <button onclick="confirmClear()" class="text-xs text-gray-500 hover:text-red-400 transition">
+                🗑️ Clear All Data
+            </button>
         </div>
     </div>
+    
+    <script>
+        function confirmClear() {
+            if (confirm('⚠️ This will delete ALL reviews and payouts data. Are you sure?')) {
+                if (confirm('This action cannot be undone. Type "DELETE" mentally and click OK to confirm.')) {
+                    window.location.href = '{{ url_for("admin.clear_data") }}';
+                }
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -850,3 +863,10 @@ def payouts():
         payouts=payout_list,
         repo=REPO
     )
+
+@admin_bp.route('/clear-data')
+@login_required
+def clear_data():
+    """Clear all reviews and payouts data."""
+    save_data({"reviews": {}, "payouts": []})
+    return redirect(url_for('admin.dashboard', message="All data cleared successfully"))
