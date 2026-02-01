@@ -120,18 +120,39 @@ def get_pr_detail(pr_number):
         print(f"Error fetching PR {pr_number}: {e}")
         return None
 
-def extract_bounty_amount(labels):
-    """Extract bounty amount from PR labels."""
-    for label in labels:
-        if "bounty" in label.lower():
-            # Try to extract number from label like "bounty:50000" or "bounty-50k"
-            import re
-            match = re.search(r'(\d+)k?', label.lower())
-            if match:
-                amount = int(match.group(1))
-                if 'k' in label.lower():
-                    amount *= 1000
-                return amount
+def extract_bounty_amount(title="", body="", labels=None):
+    """Extract bounty amount from PR title, body, or labels (in priority order)."""
+    import re
+    
+    # 1. Try PR title: "[BOUNTY] Description - 10000 WATT"
+    if title:
+        match = re.search(r'(\d{1,3}(?:,?\d{3})*)\s*WATT', title, re.IGNORECASE)
+        if match:
+            return int(match.group(1).replace(',', ''))
+    
+    # 2. Try PR body: "## Bounty\n50000 WATT" or "## Bounty Amount\n50000"
+    if body:
+        # Match ## Bounty or ## Bounty Amount section
+        match = re.search(r'##\s*Bounty(?:\s+Amount)?[^\n]*\n\s*(\d{1,3}(?:,?\d{3})*)', body, re.IGNORECASE)
+        if match:
+            return int(match.group(1).replace(',', ''))
+        
+        # Also try inline: "Bounty: 50000 WATT"
+        match = re.search(r'[Bb]ounty[:\s]+(\d{1,3}(?:,?\d{3})*)\s*WATT', body)
+        if match:
+            return int(match.group(1).replace(',', ''))
+    
+    # 3. Fallback to labels
+    if labels:
+        for label in labels:
+            if "bounty" in label.lower():
+                match = re.search(r'(\d+)k?', label.lower())
+                if match:
+                    amount = int(match.group(1))
+                    if 'k' in label.lower():
+                        amount *= 1000
+                    return amount
+    
     return 0
 
 def extract_callback_url(body):
@@ -702,7 +723,7 @@ def approve_pr(pr_number):
     # Get PR info first for callback
     pr = get_pr_detail(pr_number)
     callback_url = extract_callback_url(pr.get("body", "")) if pr else None
-    bounty = extract_bounty_amount(pr.get("labels", [])) if pr else 0
+    bounty = extract_bounty_amount(pr.get("title", ""), pr.get("body", ""), pr.get("labels", [])) if pr else 0
     
     # Merge via GitHub API
     url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
@@ -759,7 +780,7 @@ def reject_pr(pr_number):
     # Get PR info for callback
     pr = get_pr_detail(pr_number)
     callback_url = extract_callback_url(pr.get("body", "")) if pr else None
-    bounty = extract_bounty_amount(pr.get("labels", [])) if pr else 0
+    bounty = extract_bounty_amount(pr.get("title", ""), pr.get("body", ""), pr.get("labels", [])) if pr else 0
     
     data = load_data()
     review = data.get("reviews", {}).get(str(pr_number), {})
