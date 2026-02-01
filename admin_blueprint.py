@@ -786,7 +786,24 @@ This PR has been reviewed but not approved for the bounty at this time.
 def payouts():
     """Payout queue page."""
     data = load_data()
+    payout_list = data.get("payouts", [])
+    
+    # Backfill missing wallets from PR body
+    updated = False
+    for payout in payout_list:
+        if not payout.get("wallet"):
+            pr = get_pr_detail(payout.get("pr_number"))
+            if pr:
+                wallet = extract_wallet(pr.get("body", ""))
+                if wallet:
+                    payout["wallet"] = wallet
+                    updated = True
+    
+    # Save if we backfilled any wallets
+    if updated:
+        save_data(data)
+    
     return render_template_string(PAYOUTS_TEMPLATE,
-        payouts=data.get("payouts", []),
+        payouts=payout_list,
         repo=REPO
     )
