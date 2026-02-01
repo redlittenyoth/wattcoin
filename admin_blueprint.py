@@ -1,11 +1,16 @@
 """
-WattCoin Bounty Admin Dashboard - Blueprint v1.0.0
+WattCoin Bounty Admin Dashboard - Blueprint v1.1.0
 Admin routes for managing bounty PR reviews.
 
 Requires env vars:
     ADMIN_PASSWORD - Dashboard login password
     GROK_API_KEY - For PR reviews
     GITHUB_TOKEN - For GitHub API calls
+
+v1.1.0 Changes:
+- Close PR on GitHub when rejected
+- Add Rejected counter to dashboard
+- Add agent callback notification support (callback_url in PR body)
 """
 
 import os
@@ -129,6 +134,47 @@ def extract_bounty_amount(labels):
                 return amount
     return 0
 
+def extract_callback_url(body):
+    """Extract callback_url from PR body."""
+    import re
+    if not body:
+        return None
+    # Look for callback_url: https://... or callback_url=https://...
+    match = re.search(r'callback_url[:\s=]+\s*(https?://[^\s\n]+)', body, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return None
+
+def send_callback(callback_url, payload):
+    """Send callback notification to agent. Fail silently."""
+    if not callback_url:
+        return
+    try:
+        requests.post(
+            callback_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        print(f"Callback sent to {callback_url}")
+    except Exception as e:
+        print(f"Callback failed (non-blocking): {e}")
+
+def close_pr(pr_number):
+    """Close a PR on GitHub."""
+    url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}"
+    try:
+        resp = requests.patch(
+            url, 
+            headers=github_headers(), 
+            json={"state": "closed"},
+            timeout=15
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"Failed to close PR #{pr_number}: {e}")
+        return False
+
 # =============================================================================
 # GROK REVIEW
 # =============================================================================
@@ -245,7 +291,7 @@ DASHBOARD_TEMPLATE = """
         <div class="flex justify-between items-center mb-8">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ Bounty Admin Dashboard</h1>
-                <p class="text-gray-500 text-sm">v1.0.0 | {{ repo }}</p>
+                <p class="text-gray-500 text-sm">v1.1.0 | {{ repo }}</p>
             </div>
             <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
         </div>
@@ -259,7 +305,7 @@ DASHBOARD_TEMPLATE = """
         {% endif %}
         
         <!-- Stats -->
-        <div class="grid grid-cols-3 gap-4 mb-8">
+        <div class="grid grid-cols-4 gap-4 mb-8">
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="text-3xl font-bold text-blue-400">{{ stats.open_prs }}</div>
                 <div class="text-gray-500 text-sm">Open PRs</div>
@@ -271,6 +317,10 @@ DASHBOARD_TEMPLATE = """
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="text-3xl font-bold text-green-400">{{ stats.approved }}</div>
                 <div class="text-gray-500 text-sm">Approved</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-3xl font-bold text-red-400">{{ stats.rejected }}</div>
+                <div class="text-gray-500 text-sm">Rejected</div>
             </div>
         </div>
         
@@ -532,11 +582,13 @@ def dashboard():
     # Count stats
     reviewed_count = len([r for r in reviews.values() if r.get("review")])
     approved_count = len([r for r in reviews.values() if r.get("status") == "approved"])
+    rejected_count = len([r for r in reviews.values() if r.get("status") == "rejected"])
     
     stats = {
         "open_prs": len(prs),
         "pending_review": len(prs) - reviewed_count,
-        "approved": approved_count
+        "approved": approved_count,
+        "rejected": rejected_count
     }
     
     return render_template_string(DASHBOARD_TEMPLATE, 
@@ -593,6 +645,11 @@ def trigger_review(pr_number):
 @login_required
 def approve_pr(pr_number):
     """Approve and merge a PR."""
+    # Get PR info first for callback
+    pr = get_pr_detail(pr_number)
+    callback_url = extract_callback_url(pr.get("body", "")) if pr else None
+    bounty = extract_bounty_amount(pr.get("labels", [])) if pr else 0
+    
     # Merge via GitHub API
     url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
     try:
@@ -604,14 +661,14 @@ def approve_pr(pr_number):
         if resp.status_code in [200, 201]:
             # Update data
             data = load_data()
+            review_text = ""
             if str(pr_number) in data["reviews"]:
                 data["reviews"][str(pr_number)]["status"] = "approved"
                 data["reviews"][str(pr_number)]["approved_at"] = datetime.now().isoformat()
+                review_text = data["reviews"][str(pr_number)].get("review", "")
             
             # Add to payout queue
-            pr = get_pr_detail(pr_number)
             if pr:
-                bounty = extract_bounty_amount(pr.get("labels", []))
                 data["payouts"].append({
                     "pr_number": pr_number,
                     "author": pr["author"],
@@ -621,6 +678,17 @@ def approve_pr(pr_number):
                 })
             
             save_data(data)
+            
+            # Send callback notification
+            send_callback(callback_url, {
+                "pr_number": pr_number,
+                "status": "approved",
+                "bounty": bounty,
+                "review_summary": review_text[:1000],
+                "payout_wallet": "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF",
+                "timestamp": datetime.now().isoformat()
+            })
+            
             return redirect(url_for('admin.dashboard', message=f"PR #{pr_number} merged successfully"))
         else:
             error_msg = resp.json().get("message", "Unknown error")
@@ -631,19 +699,25 @@ def approve_pr(pr_number):
 @admin_bp.route('/pr/<int:pr_number>/reject', methods=['POST'])
 @login_required
 def reject_pr(pr_number):
-    """Reject a PR (post comment, don't close)."""
+    """Reject and close a PR."""
+    # Get PR info for callback
+    pr = get_pr_detail(pr_number)
+    callback_url = extract_callback_url(pr.get("body", "")) if pr else None
+    bounty = extract_bounty_amount(pr.get("labels", [])) if pr else 0
+    
     data = load_data()
     review = data.get("reviews", {}).get(str(pr_number), {})
+    review_text = review.get('review', 'No detailed review available.')
     
     # Post rejection comment
     comment = f"""## ❌ Bounty Review - Not Approved
 
 This PR has been reviewed but not approved for the bounty at this time.
 
-{review.get('review', 'No detailed review available.')}
+{review_text}
 
 ---
-*This is an automated response from the WattCoin bounty system. Please address the issues above and request a re-review.*
+*This is an automated response from the WattCoin bounty system. Please address the issues above and submit a new PR.*
 """
     
     url = f"https://api.github.com/repos/{REPO}/issues/{pr_number}/comments"
@@ -652,13 +726,26 @@ This PR has been reviewed but not approved for the bounty at this time.
     except:
         pass  # Comment posting is best-effort
     
+    # Close the PR on GitHub
+    close_pr(pr_number)
+    
     # Update status
     if str(pr_number) in data.get("reviews", {}):
         data["reviews"][str(pr_number)]["status"] = "rejected"
         data["reviews"][str(pr_number)]["rejected_at"] = datetime.now().isoformat()
         save_data(data)
     
-    return redirect(url_for('admin.dashboard', message=f"PR #{pr_number} rejected, comment posted"))
+    # Send callback notification
+    send_callback(callback_url, {
+        "pr_number": pr_number,
+        "status": "rejected",
+        "bounty": bounty,
+        "review_summary": review_text[:1000],
+        "payout_wallet": None,
+        "timestamp": datetime.now().isoformat()
+    })
+    
+    return redirect(url_for('admin.dashboard', message=f"PR #{pr_number} rejected and closed"))
 
 @admin_bp.route('/payouts')
 @login_required
