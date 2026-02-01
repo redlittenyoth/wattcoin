@@ -1,11 +1,17 @@
 """
-WattCoin Bounty Admin Dashboard - Blueprint v1.1.0
+WattCoin Bounty Admin Dashboard - Blueprint v1.2.0
 Admin routes for managing bounty PR reviews.
 
 Requires env vars:
     ADMIN_PASSWORD - Dashboard login password
     GROK_API_KEY - For PR reviews
     GITHUB_TOKEN - For GitHub API calls
+
+v1.2.0 Changes:
+- Connect Wallet for one-click Phantom payouts
+- TX signature recording and Solscan links
+- Bounty amount parsing from linked issues
+- Mark Paid button with TX tracking
 
 v1.1.0 Changes:
 - Close PR on GitHub when rejected
@@ -437,7 +443,7 @@ DASHBOARD_TEMPLATE = """
         <div class="flex justify-between items-center mb-8">
             <div>
                 <h1 class="text-2xl font-bold text-green-400">⚡ Bounty Admin Dashboard</h1>
-                <p class="text-gray-500 text-sm">v1.1.0 | {{ repo }}</p>
+                <p class="text-gray-500 text-sm">v1.2.0 | {{ repo }}</p>
             </div>
             <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
         </div>
@@ -651,15 +657,27 @@ PAYOUTS_TEMPLATE = """
             transition: opacity 0.3s; z-index: 1000;
         }
         .toast.show { opacity: 1; }
+        .toast.error { background: #ef4444; color: #fff; }
+        .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <div id="toast" class="toast"></div>
     
     <div class="max-w-5xl mx-auto p-6">
-        <a href="{{ url_for('admin.dashboard') }}" class="text-gray-500 hover:text-gray-300 text-sm mb-4 inline-block">
-            ← Back to Dashboard
-        </a>
+        <!-- Header with wallet connection -->
+        <div class="flex justify-between items-center mb-4">
+            <a href="{{ url_for('admin.dashboard') }}" class="text-gray-500 hover:text-gray-300 text-sm">
+                ← Back to Dashboard
+            </a>
+            <div id="walletSection">
+                <button onclick="connectWallet()" id="connectBtn"
+                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium transition">
+                    🔌 Connect Phantom
+                </button>
+            </div>
+        </div>
         
         <h1 class="text-2xl font-bold text-green-400 mb-6">💰 Payout Queue</h1>
         
@@ -677,7 +695,7 @@ PAYOUTS_TEMPLATE = """
                 </thead>
                 <tbody>
                     {% for payout in payouts %}
-                    <tr class="border-t border-gray-700">
+                    <tr class="border-t border-gray-700" id="row-{{ payout.pr_number }}">
                         <td class="px-4 py-3">
                             <a href="https://github.com/{{ repo }}/pull/{{ payout.pr_number }}" 
                                target="_blank" class="text-blue-400 hover:underline">
@@ -694,7 +712,7 @@ PAYOUTS_TEMPLATE = """
                         </td>
                         <td class="px-4 py-3 text-green-400 font-mono">{{ "{:,}".format(payout.amount) }} WATT</td>
                         <td class="px-4 py-3">
-                            <span class="px-2 py-1 rounded text-xs 
+                            <span id="status-{{ payout.pr_number }}" class="px-2 py-1 rounded text-xs 
                                 {% if payout.status == 'pending' %}bg-yellow-900/50 text-yellow-400
                                 {% elif payout.status == 'paid' %}bg-green-900/50 text-green-400
                                 {% endif %}">
@@ -702,19 +720,23 @@ PAYOUTS_TEMPLATE = """
                             </span>
                             {% if payout.tx_sig %}
                             <a href="https://solscan.io/tx/{{ payout.tx_sig }}" target="_blank" 
-                               class="text-xs text-green-400 hover:underline ml-2">TX</a>
+                               class="text-xs text-green-400 hover:underline ml-2" id="txlink-{{ payout.pr_number }}">TX ↗</a>
+                            {% else %}
+                            <span id="txlink-{{ payout.pr_number }}"></span>
                             {% endif %}
                         </td>
-                        <td class="px-4 py-3">
+                        <td class="px-4 py-3" id="actions-{{ payout.pr_number }}">
                             {% if payout.status == 'pending' and payout.wallet %}
                             <div class="flex gap-2">
-                                <button onclick="copyWallet('{{ payout.wallet }}', {{ payout.amount }})"
-                                   class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium transition inline-flex items-center gap-1">
-                                    📋 Copy
+                                <button onclick="sendPayout('{{ payout.wallet }}', {{ payout.amount }}, {{ payout.pr_number }})"
+                                   class="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition inline-flex items-center gap-1"
+                                   id="payBtn-{{ payout.pr_number }}">
+                                    ⚡ Pay
                                 </button>
-                                <button onclick="markPaid({{ payout.pr_number }})"
-                                   class="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-sm font-medium transition inline-flex items-center gap-1">
-                                    ✓ Paid
+                                <button onclick="copyWallet('{{ payout.wallet }}', {{ payout.amount }})"
+                                   class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 rounded text-sm font-medium transition"
+                                   title="Copy wallet for manual payment">
+                                    📋
                                 </button>
                             </div>
                             {% elif payout.status == 'pending' and not payout.wallet %}
@@ -733,8 +755,8 @@ PAYOUTS_TEMPLATE = """
             <p class="text-sm text-gray-400">
                 <strong>Source Wallet:</strong> 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF (bounty fund)
             </p>
-            <p class="text-sm text-gray-500 mt-2">
-                Copy contributor wallet, open Phantom, paste and send WATT.
+            <p class="text-sm text-gray-500 mt-2" id="walletStatus">
+                Connect Phantom to pay directly, or use 📋 to copy wallet for manual payment.
             </p>
         </div>
         {% else %}
@@ -744,21 +766,175 @@ PAYOUTS_TEMPLATE = """
         {% endif %}
     </div>
     
-    <script>
+    <script type="module">
+        // Constants
+        const WATT_MINT = 'Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump';
+        const WATT_DECIMALS = 6;
+        const RPC_URL = 'https://api.mainnet-beta.solana.com';
+        
+        // State
+        let walletConnected = false;
+        let walletPubkey = null;
+        
+        // Make functions globally available
+        window.connectWallet = connectWallet;
+        window.sendPayout = sendPayout;
+        window.copyWallet = copyWallet;
+        
+        // Toast helper
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => toast.classList.remove('show'), 4000);
+        }
+        
+        // Connect Phantom
+        async function connectWallet() {
+            try {
+                if (!window.solana || !window.solana.isPhantom) {
+                    window.open('https://phantom.app/', '_blank');
+                    showToast('Please install Phantom wallet', true);
+                    return;
+                }
+                
+                const resp = await window.solana.connect();
+                walletPubkey = resp.publicKey.toString();
+                walletConnected = true;
+                
+                document.getElementById('connectBtn').innerHTML = 
+                    '✓ ' + walletPubkey.slice(0,4) + '...' + walletPubkey.slice(-4);
+                document.getElementById('connectBtn').className = 
+                    'px-4 py-2 bg-green-600 rounded text-sm font-medium cursor-default';
+                document.getElementById('walletStatus').textContent = 
+                    'Connected: ' + walletPubkey.slice(0,8) + '...' + walletPubkey.slice(-8);
+                
+                showToast('Wallet connected!');
+            } catch (err) {
+                console.error(err);
+                showToast('Connection failed: ' + err.message, true);
+            }
+        }
+        
+        // Send payout via Phantom
+        async function sendPayout(recipientWallet, amount, prNumber) {
+            // If not connected, fall back to manual
+            if (!walletConnected) {
+                const txSig = prompt('Wallet not connected.\\n\\nEnter TX signature after manual payment (or Cancel):');
+                if (txSig !== null && txSig.trim()) {
+                    markPaidOnServer(prNumber, txSig.trim());
+                }
+                return;
+            }
+            
+            const btn = document.getElementById('payBtn-' + prNumber);
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner">⏳</span> Sending...';
+            btn.disabled = true;
+            
+            try {
+                // Dynamic import Solana libraries
+                const { Connection, PublicKey, Transaction } = await import('https://esm.sh/@solana/web3.js@1.87.6');
+                const { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } = 
+                    await import('https://esm.sh/@solana/spl-token@0.3.9');
+                
+                const connection = new Connection(RPC_URL, 'confirmed');
+                const mintPubkey = new PublicKey(WATT_MINT);
+                const recipientPubkey = new PublicKey(recipientWallet);
+                const senderPubkey = new PublicKey(walletPubkey);
+                
+                // Get token accounts
+                const senderATA = await getAssociatedTokenAddress(mintPubkey, senderPubkey);
+                const recipientATA = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+                
+                // Build transfer instruction
+                const amountInSmallestUnit = BigInt(amount) * BigInt(10 ** WATT_DECIMALS);
+                const transferIx = createTransferInstruction(
+                    senderATA,
+                    recipientATA,
+                    senderPubkey,
+                    amountInSmallestUnit
+                );
+                
+                // Build transaction
+                const tx = new Transaction().add(transferIx);
+                tx.feePayer = senderPubkey;
+                const { blockhash } = await connection.getLatestBlockhash();
+                tx.recentBlockhash = blockhash;
+                
+                // Sign and send via Phantom
+                const signed = await window.solana.signTransaction(tx);
+                const signature = await connection.sendRawTransaction(signed.serialize());
+                
+                // Wait for confirmation
+                await connection.confirmTransaction(signature, 'confirmed');
+                
+                showToast('✓ Payment sent! TX: ' + signature.slice(0,8) + '...');
+                
+                // Mark as paid on server
+                markPaidOnServer(prNumber, signature);
+                
+                // Update UI immediately
+                updateRowToPaid(prNumber, signature);
+                
+            } catch (err) {
+                console.error(err);
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                
+                if (err.message.includes('User rejected')) {
+                    showToast('Transaction cancelled', true);
+                } else {
+                    showToast('Error: ' + err.message, true);
+                }
+            }
+        }
+        
+        // Mark paid on server
+        function markPaidOnServer(prNumber, txSig) {
+            fetch('/admin/payout/' + prNumber + '/paid?tx=' + encodeURIComponent(txSig))
+                .then(() => console.log('Server updated'))
+                .catch(err => console.error('Server update failed:', err));
+        }
+        
+        // Update row UI to show paid
+        function updateRowToPaid(prNumber, txSig) {
+            const statusEl = document.getElementById('status-' + prNumber);
+            const actionsEl = document.getElementById('actions-' + prNumber);
+            const txLinkEl = document.getElementById('txlink-' + prNumber);
+            
+            if (statusEl) {
+                statusEl.textContent = 'paid';
+                statusEl.className = 'px-2 py-1 rounded text-xs bg-green-900/50 text-green-400';
+            }
+            if (actionsEl) {
+                actionsEl.innerHTML = '<span class="text-xs text-gray-500">✓ Complete</span>';
+            }
+            if (txLinkEl) {
+                txLinkEl.innerHTML = '<a href="https://solscan.io/tx/' + txSig + '" target="_blank" ' +
+                    'class="text-xs text-green-400 hover:underline ml-2">TX ↗</a>';
+            }
+        }
+        
+        // Copy wallet fallback
         function copyWallet(wallet, amount) {
             navigator.clipboard.writeText(wallet).then(() => {
-                const toast = document.getElementById('toast');
-                toast.textContent = '✓ Copied! Send ' + amount.toLocaleString() + ' WATT to contributor';
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 3000);
+                showToast('✓ Copied! Send ' + amount.toLocaleString() + ' WATT');
             });
         }
         
-        function markPaid(prNumber) {
-            const txSig = prompt('Enter Solana TX signature (optional):');
-            if (txSig !== null) {
-                window.location.href = '/admin/payout/' + prNumber + '/paid?tx=' + encodeURIComponent(txSig);
-            }
+        // Auto-connect if already authorized
+        if (window.solana && window.solana.isPhantom) {
+            window.solana.connect({ onlyIfTrusted: true })
+                .then(resp => {
+                    walletPubkey = resp.publicKey.toString();
+                    walletConnected = true;
+                    document.getElementById('connectBtn').innerHTML = 
+                        '✓ ' + walletPubkey.slice(0,4) + '...' + walletPubkey.slice(-4);
+                    document.getElementById('connectBtn').className = 
+                        'px-4 py-2 bg-green-600 rounded text-sm font-medium cursor-default';
+                })
+                .catch(() => {}); // Not pre-authorized, that's fine
         }
     </script>
 </body>
