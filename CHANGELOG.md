@@ -1,4 +1,17 @@
 ## [February 3, 2026] - [UTC]
+- **Action**: Dashboard update
+- **Version**: v1.8.1
+- **Files**: admin_blueprint.py
+- **Summary**: Submissions Dashboard
+  - New "📋 Submissions" tab in admin dashboard
+  - View pending submissions with Grok review scores
+  - Manual approve/reject buttons with one-click payout
+  - Payout history with TX links to Solscan
+  - Rejected submissions log
+  - Expandable result viewer per submission
+- **Requested by**: Chris
+
+## [February 3, 2026] - [UTC]
 - **Action**: Feature release
 - **Version**: v1.8.0
 - **Files**: api_tasks.py, requirements.txt
