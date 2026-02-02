@@ -1,5 +1,17 @@
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
+- **Version**: v1.7.0
+- **Files**: skills/wattcoin/ (new folder)
+- **Summary**: WattCoin OpenClaw Skill
+  - `SKILL.md` - Documentation and usage examples
+  - `wattcoin.py` - Core functions for agents
+  - Functions: watt_balance, watt_send, watt_query, watt_scrape, watt_tasks, watt_submit
+  - Wallet handling via env var or JSON file
+  - CLI support: `python wattcoin.py balance|tasks|info`
+- **Requested by**: Chris
+
+## [February 2, 2026] - [UTC]
+- **Action**: Feature release
 - **Version**: v1.6.0
 - **Files**: api_tasks.py (new), bridge_web.py
 - **Summary**: Agent Tasks API - Agent-only task discovery
