@@ -1235,14 +1235,38 @@ API_KEYS_TEMPLATE = """
         </div>
         {% endif %}
         
-        <div class="mt-6 p-4 bg-gray-800 rounded-lg">
-            <p class="text-sm text-gray-400 mb-2"><strong>Usage:</strong></p>
-            <code class="text-xs bg-gray-700 px-3 py-2 rounded block">
-                curl -X POST https://your-domain/api/v1/scrape \\<br>
-                &nbsp;&nbsp;-H "X-API-Key: your-key" \\<br>
-                &nbsp;&nbsp;-H "Content-Type: application/json" \\<br>
+        <!-- How It Works -->
+        <div class="mt-6 grid md:grid-cols-2 gap-4">
+            <div class="p-4 bg-gray-800 rounded-lg">
+                <p class="text-sm text-green-400 font-semibold mb-3">📋 How to Issue Keys</p>
+                <ol class="text-xs text-gray-400 space-y-2 list-decimal list-inside">
+                    <li>User pays <strong>1000 WATT</strong> to bounty wallet</li>
+                    <li>User sends you TX proof (X, Discord, etc.)</li>
+                    <li>Verify TX on Solscan</li>
+                    <li>Create key above → share with user</li>
+                </ol>
+                <p class="text-xs text-gray-500 mt-3">Bounty wallet: <code class="bg-gray-700 px-1 rounded">7vvNkG3...dXVSF</code></p>
+            </div>
+            
+            <div class="p-4 bg-gray-800 rounded-lg">
+                <p class="text-sm text-blue-400 font-semibold mb-3">⚡ Rate Limits</p>
+                <table class="text-xs text-gray-400 w-full">
+                    <tr><td class="py-1">No key (IP-based)</td><td class="text-right">100/hr</td></tr>
+                    <tr><td class="py-1">Basic key</td><td class="text-right text-blue-400">500/hr</td></tr>
+                    <tr><td class="py-1">Premium key</td><td class="text-right text-purple-400">2000/hr</td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-4 p-4 bg-gray-800 rounded-lg">
+            <p class="text-sm text-gray-400 mb-2"><strong>User Usage (share with key recipients):</strong></p>
+            <code class="text-xs bg-gray-700 px-3 py-2 rounded block overflow-x-auto">
+                curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/scrape \<br>
+                &nbsp;&nbsp;-H "X-API-Key: your-key-here" \<br>
+                &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
                 &nbsp;&nbsp;-d '{"url": "https://example.com", "format": "text"}'
             </code>
+            <p class="text-xs text-gray-500 mt-2">Formats: <code class="bg-gray-700 px-1 rounded">text</code> | <code class="bg-gray-700 px-1 rounded">html</code> | <code class="bg-gray-700 px-1 rounded">json</code></p>
         </div>
     </div>
     
