@@ -1,8 +1,15 @@
 """
-Grok-Claude Bridge - Web Interface v1.2.0
+Grok-Claude Bridge - Web Interface v1.3.0
 Human-in-the-loop AI collaboration for WattCoin project
 + Proxy endpoint for external API calls (Moltbook, etc.)
 + Admin dashboard for bounty management
++ API key authentication for scraper
+
+CHANGELOG v1.3.0:
+- Added API key authentication for /api/v1/scrape endpoint
+- API keys have higher rate limits (500/hr basic, 2000/hr premium)
+- Usage tracking per API key
+- Keys managed via admin dashboard
 
 CHANGELOG v1.2.0:
 - Added admin blueprint for bounty dashboard
@@ -69,6 +76,13 @@ RATE_LIMIT_WINDOW_SECONDS = 60 * 60  # 1 hour
 MAX_REQUESTS_PER_IP = 100
 MAX_REQUESTS_PER_URL = 10
 
+# API Key config
+API_KEYS_FILE = "/app/data/api_keys.json"
+API_KEY_RATE_LIMITS = {
+    "basic": {"requests_per_hour": 500, "requests_per_url": 50},
+    "premium": {"requests_per_hour": 2000, "requests_per_url": 200}
+}
+
 SCRAPE_USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -79,6 +93,71 @@ SCRAPE_USER_AGENTS = [
 
 _rate_limit_ip = defaultdict(deque)
 _rate_limit_url = defaultdict(deque)
+_rate_limit_api_key = defaultdict(deque)
+_rate_limit_api_key_url = defaultdict(deque)
+
+# =============================================================================
+# API KEY VALIDATION
+# =============================================================================
+
+def _load_api_keys():
+    """Load API keys from JSON file."""
+    try:
+        with open(API_KEYS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"keys": {}}
+
+def _save_api_keys(data):
+    """Save API keys to JSON file."""
+    try:
+        os.makedirs(os.path.dirname(API_KEYS_FILE), exist_ok=True)
+        with open(API_KEYS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving API keys: {e}")
+
+def _validate_api_key(api_key):
+    """Validate API key and return key data if valid."""
+    if not api_key:
+        return None
+    data = _load_api_keys()
+    key_data = data.get("keys", {}).get(api_key)
+    if key_data and key_data.get("status") == "active":
+        return key_data
+    return None
+
+def _increment_api_key_usage(api_key):
+    """Increment usage count for an API key."""
+    data = _load_api_keys()
+    if api_key in data.get("keys", {}):
+        data["keys"][api_key]["usage_count"] = data["keys"][api_key].get("usage_count", 0) + 1
+        data["keys"][api_key]["last_used"] = datetime.utcnow().isoformat() + "Z"
+        _save_api_keys(data)
+
+def _check_api_key_rate_limit(api_key, url, tier):
+    """Check rate limit for API key. Returns (allowed, retry_after)."""
+    now = time.time()
+    limits = API_KEY_RATE_LIMITS.get(tier, API_KEY_RATE_LIMITS["basic"])
+    
+    # Check per-key rate limit
+    key_queue = _rate_limit_api_key[api_key]
+    _prune_rate_limit(key_queue, now)
+    if len(key_queue) >= limits["requests_per_hour"]:
+        retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - key_queue[0]))
+        return False, retry_after
+    
+    # Check per-key per-URL rate limit
+    key_url = f"{api_key}:{url}"
+    url_queue = _rate_limit_api_key_url[key_url]
+    _prune_rate_limit(url_queue, now)
+    if len(url_queue) >= limits["requests_per_url"]:
+        retry_after = int(RATE_LIMIT_WINDOW_SECONDS - (now - url_queue[0]))
+        return False, retry_after
+    
+    key_queue.append(now)
+    url_queue.append(now)
+    return True, None
 
 
 def _prune_rate_limit(queue, now):
@@ -531,14 +610,37 @@ def scrape():
     if not _validate_scrape_url(target_url):
         return jsonify({'success': False, 'error': 'Invalid or blocked URL'}), 400
 
-    client_ip = _get_client_ip()
-    allowed, retry_after = _check_rate_limit(client_ip, target_url)
-    if not allowed:
-        return jsonify({
-            'success': False,
-            'error': 'Rate limit exceeded',
-            'retry_after_seconds': retry_after
-        }), 429
+    # Check for API key authentication
+    api_key = request.headers.get('X-API-Key', '').strip()
+    key_data = _validate_api_key(api_key) if api_key else None
+    
+    if api_key and not key_data:
+        # Invalid API key provided
+        return jsonify({'success': False, 'error': 'Invalid API key'}), 401
+    
+    if key_data:
+        # Use API key rate limiting (higher limits)
+        tier = key_data.get('tier', 'basic')
+        allowed, retry_after = _check_api_key_rate_limit(api_key, target_url, tier)
+        if not allowed:
+            return jsonify({
+                'success': False,
+                'error': 'Rate limit exceeded',
+                'retry_after_seconds': retry_after,
+                'tier': tier
+            }), 429
+        # Increment usage count
+        _increment_api_key_usage(api_key)
+    else:
+        # No API key - use IP-based rate limiting
+        client_ip = _get_client_ip()
+        allowed, retry_after = _check_rate_limit(client_ip, target_url)
+        if not allowed:
+            return jsonify({
+                'success': False,
+                'error': 'Rate limit exceeded',
+                'retry_after_seconds': retry_after
+            }), 429
 
     headers = {
         'User-Agent': random.choice(SCRAPE_USER_AGENTS),
