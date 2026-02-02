@@ -1,5 +1,19 @@
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
+- **Version**: v1.6.0
+- **Files**: api_tasks.py (new), bridge_web.py
+- **Summary**: Agent Tasks API - Agent-only task discovery
+  - `GET /api/v1/tasks` - List all agent tasks (label: agent-task)
+  - `GET /api/v1/tasks/<id>` - Get single task
+  - Parses `[AGENT TASK: X WATT]` from title
+  - Detects recurring vs one-time tasks
+  - Extracts frequency (daily/weekly/monthly)
+  - Filters: ?type=recurring, ?min_amount=1000
+  - Not listed on website - API only for AI agents
+- **Requested by**: Chris
+
+## [February 2, 2026] - [UTC]
+- **Action**: Feature release
 - **Version**: v1.5.0
 - **Files**: api_reputation.py (new), bridge_web.py, Leaderboard.jsx (wattcoin-web)
 - **Summary**: Reputation System v0
