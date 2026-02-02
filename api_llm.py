@@ -23,7 +23,7 @@ llm_bp = Blueprint('llm', __name__)
 GROK_API_KEY = os.getenv("GROK_API_KEY", "")
 BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
 WATT_TOKEN_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
-SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://rpc.ankr.com/solana")
 
 # Pricing
 WATT_PRICE_GROK = 500
