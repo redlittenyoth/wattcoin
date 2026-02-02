@@ -489,15 +489,15 @@ DASHBOARD_TEMPLATE = """
         <div class="flex gap-1 mb-6 border-b border-gray-700">
             <a href="{{ url_for('admin.dashboard') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
-                🎯 Bounties
+                🎯 PR Bounties
             </a>
             <a href="{{ url_for('admin.submissions') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                📋 Submissions
+                📋 Agent Tasks
             </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                🔑 API Keys
+                🔑 Scraper Keys
             </a>
         </div>
         
@@ -1120,15 +1120,15 @@ API_KEYS_TEMPLATE = """
         <div class="flex gap-1 mb-6 border-b border-gray-700">
             <a href="{{ url_for('admin.dashboard') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                🎯 Bounties
+                🎯 PR Bounties
             </a>
             <a href="{{ url_for('admin.submissions') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                📋 Submissions
+                📋 Agent Tasks
             </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
-                🔑 API Keys
+                🔑 Scraper Keys
             </a>
         </div>
         
@@ -1713,15 +1713,15 @@ SUBMISSIONS_HTML = """
         <div class="flex gap-1 mb-6 border-b border-gray-700">
             <a href="{{ url_for('admin.dashboard') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                🎯 Bounties
+                🎯 PR Bounties
             </a>
             <a href="{{ url_for('admin.submissions') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
-                📋 Submissions
+                📋 Agent Tasks
             </a>
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
-                🔑 API Keys
+                🔑 Scraper Keys
             </a>
         </div>
         
