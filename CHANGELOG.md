@@ -1,3 +1,23 @@
+## [February 2, 2026] - [UTC]
+- **Action**: Feature release
+- **Version**: v1.3.0
+- **Files**: admin_blueprint.py, bridge_web.py
+- **Summary**: API Key Authentication for Scraper + Dashboard Nav Tabs
+  - Dashboard: Added top nav tabs (Bounties | API Keys)
+  - API Keys management page: Create, list, revoke keys
+  - Scraper auth: X-API-Key header for higher rate limits
+  - Tiers: Basic (500/hr), Premium (2000/hr)
+  - Usage tracking per key
+  - No-key users still work with IP-based limits (100/hr)
+- **Requested by**: Chris - Issue #11 (API key auth for scraper)
+
+## [February 1, 2026] - [UTC]
+- **Action**: Feature release  
+- **Version**: v1.2.0
+- **Files**: admin_blueprint.py
+- **Summary**: Connect Wallet for one-click Phantom payouts, Mark Paid button, bounty parsing from linked issues, TX signature recording
+- **Requested by**: Chris
+
 ## [January 31, 2026] - [22:30 UTC]
 - **Action**: Created
 - **Files**: admin_blueprint.py, bridge_web.py (updated)
