@@ -270,7 +270,7 @@ def call_grok(prompt):
         client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
         
         response = client.chat.completions.create(
-            model="grok-2-latest",
+            model="grok-4-1-fast-reasoning",
             messages=[
                 {"role": "user", "content": prompt}
             ],
