@@ -49,6 +49,13 @@ Compatible with: Grok 4/5, Tesla AI5, Optimus, Cybercab, Boston Dynamics, Ecovac
 | Team (4-year vesting) | 20% |
 | Community Airdrops | 10% |
 
+## 📚 API Documentation
+
+- [Scraper API](docs/SCRAPER_API.md) - Fetch web content programmatically
+- [Bounties API](docs/API_ENDPOINTS.md) - List and query bounties
+- [LLM Proxy](docs/LLM_PROXY_SPEC.md) - Pay WATT for Grok queries
+
+
 ## 🛠 Development Tools
 
 This repo includes:
