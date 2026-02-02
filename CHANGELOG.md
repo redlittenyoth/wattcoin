@@ -1,14 +1,21 @@
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
 - **Version**: v1.3.0
-- **Files**: admin_blueprint.py, bridge_web.py
-- **Summary**: API Key Authentication for Scraper + Dashboard Nav Tabs
+- **Files**: admin_blueprint.py, bridge_web.py, api_bounties.py (new)
+- **Summary**: API Key Authentication for Scraper + Dashboard Nav Tabs + Bounties API
   - Dashboard: Added top nav tabs (Bounties | API Keys)
   - API Keys management page: Create, list, revoke keys
+  - API Keys: Added "How to Issue Keys" guide and rate limits info
+  - API Keys: Added 🔍 Verify TX button (opens Solscan)
   - Scraper auth: X-API-Key header for higher rate limits
   - Tiers: Basic (500/hr), Premium (2000/hr)
   - Usage tracking per key
   - No-key users still work with IP-based limits (100/hr)
+  - **NEW: Public Bounties API** - `GET /api/v1/bounties`
+    - Lists all open bounties for AI agents to discover
+    - Filters: ?tier=, ?status=, ?min_amount=
+    - Includes claimed_by, deadline, description
+    - Cached 5 min to avoid GitHub rate limits
 - **Requested by**: Chris - Issue #11 (API key auth for scraper)
 
 ## [February 1, 2026] - [UTC]
