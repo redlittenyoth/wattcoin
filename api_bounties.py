@@ -1,6 +1,12 @@
 """
 WattCoin Bounties API - Public endpoint for AI agents
-GET /api/v1/bounties - List available bounties
+GET /api/v1/bounties - List available bounties and agent tasks
+
+Query params:
+  - type: all (default), bounty, agent
+  - tier: low, medium, high
+  - status: open, claimed
+  - min_amount: minimum WATT reward
 
 No auth required. Cached for 5 minutes.
 """
@@ -68,7 +74,7 @@ def parse_claimed_info(comments):
     return None
 
 def fetch_bounties():
-    """Fetch bounties from GitHub API."""
+    """Fetch bounties and agent tasks from GitHub API."""
     now = time.time()
     
     # Check cache
@@ -76,31 +82,46 @@ def fetch_bounties():
         return _bounties_cache["data"]
     
     bounties = []
+    seen_ids = set()
     
     try:
-        # Fetch issues with bounty label
-        url = f"https://api.github.com/repos/{REPO}/issues?labels=bounty&state=open&per_page=100"
-        resp = requests.get(url, headers=github_headers(), timeout=15)
+        # Fetch issues with bounty OR agent-task labels (two calls, merge)
+        labels_to_fetch = ["bounty", "agent-task"]
+        all_issues = []
         
-        if resp.status_code != 200:
-            return bounties
+        for label in labels_to_fetch:
+            url = f"https://api.github.com/repos/{REPO}/issues?labels={label}&state=open&per_page=100"
+            resp = requests.get(url, headers=github_headers(), timeout=15)
+            
+            if resp.status_code == 200:
+                all_issues.extend(resp.json())
         
-        issues = resp.json()
-        
-        for issue in issues:
+        for issue in all_issues:
             # Skip PRs (they show up in issues endpoint)
             if issue.get("pull_request"):
                 continue
             
             issue_number = issue.get("number")
+            
+            # Dedupe (in case issue has both labels)
+            if issue_number in seen_ids:
+                continue
+            seen_ids.add(issue_number)
             title = issue.get("title", "")
             amount = parse_bounty_amount(title)
             
             if amount == 0:
                 continue
             
-            # Clean title (remove bounty tag)
-            clean_title = re.sub(r'\[BOUNTY[:\s]*[\d,]+\s*WATT\]\s*', '', title, flags=re.IGNORECASE).strip()
+            # Determine type from labels (agent-task takes priority)
+            label_names = [l.get("name", "").lower() for l in issue.get("labels", [])]
+            if "agent-task" in label_names:
+                item_type = "agent"
+            else:
+                item_type = "bounty"
+            
+            # Clean title (remove bounty/agent-task tag)
+            clean_title = re.sub(r'\[(BOUNTY|AGENT TASK)[:\s]*[\d,]+\s*WATT\]\s*', '', title, flags=re.IGNORECASE).strip()
             
             # Get issue body for description
             body = issue.get("body") or ""
@@ -137,9 +158,10 @@ def fetch_bounties():
             
             bounty = {
                 "id": issue_number,
+                "type": item_type,
                 "title": clean_title,
                 "amount": amount,
-                "stake_required": int(amount * 0.1),
+                "stake_required": int(amount * 0.1) if item_type == "bounty" else 0,
                 "tier": get_tier(amount),
                 "status": status,
                 "url": issue.get("html_url"),
@@ -167,15 +189,23 @@ def fetch_bounties():
 
 @bounties_bp.route('/api/v1/bounties', methods=['GET'])
 def list_bounties():
-    """Public endpoint to list all bounties."""
+    """Public endpoint to list all bounties and agent tasks."""
     bounties = fetch_bounties()
     
     # Apply filters
+    type_filter = request.args.get('type', 'all').lower()
     tier_filter = request.args.get('tier')
     status_filter = request.args.get('status')
     min_amount = request.args.get('min_amount', type=int)
     
     filtered = bounties
+    
+    # Type filter
+    if type_filter == 'bounty':
+        filtered = [b for b in filtered if b["type"] == "bounty"]
+    elif type_filter == 'agent':
+        filtered = [b for b in filtered if b["type"] == "agent"]
+    # 'all' returns everything
     
     if tier_filter:
         filtered = [b for b in filtered if b["tier"] == tier_filter]
@@ -186,12 +216,17 @@ def list_bounties():
     if min_amount:
         filtered = [b for b in filtered if b["amount"] >= min_amount]
     
+    # Calculate summary stats
+    total_bounties = len([b for b in filtered if b["type"] == "bounty"])
+    total_agent_tasks = len([b for b in filtered if b["type"] == "agent"])
     total_watt = sum(b["amount"] for b in filtered)
     
     return jsonify({
         "total": len(filtered),
+        "total_bounties": total_bounties,
+        "total_agent_tasks": total_agent_tasks,
         "total_watt": total_watt,
-        "bounties": filtered,
+        "items": filtered,
         "stake_wallet": STAKE_WALLET,
         "docs": DOCS_URL,
         "cached_until": datetime.fromtimestamp(_bounties_cache["expires"]).isoformat() + "Z" if _bounties_cache["expires"] else None
