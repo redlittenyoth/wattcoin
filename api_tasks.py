@@ -921,19 +921,55 @@ def list_all_submissions():
         "submissions": submissions
     })
 
+@tasks_bp.route('/api/v1/tasks/external', methods=['GET'])
+@require_admin
+def list_external_tasks():
+    """List all external tasks with full details (admin only)."""
+    external_data = load_external_tasks()
+    tasks = external_data.get("tasks", [])
+    
+    # Optional status filter
+    status = request.args.get('status')  # open, completed, cancelled
+    if status:
+        tasks = [t for t in tasks if t.get("status") == status]
+    
+    # Calculate stats
+    open_count = len([t for t in external_data.get("tasks", []) if t.get("status") == "open"])
+    completed_count = len([t for t in external_data.get("tasks", []) if t.get("status") == "completed"])
+    total_watt_posted = sum(t.get("amount", 0) for t in external_data.get("tasks", []))
+    total_watt_paid = sum(t.get("amount", 0) for t in external_data.get("tasks", []) if t.get("status") == "completed")
+    
+    return jsonify({
+        "success": True,
+        "count": len(tasks),
+        "stats": {
+            "open": open_count,
+            "completed": completed_count,
+            "total_posted_watt": total_watt_posted,
+            "total_paid_watt": total_watt_paid
+        },
+        "tasks": tasks
+    })
+
 @tasks_bp.route('/api/v1/tasks/<task_id>/approve/<submission_id>', methods=['POST'])
 @require_admin
 def approve_submission(task_id, submission_id):
     """Manually approve a submission and trigger payout (admin only)."""
+    # Parse task_id for comparison
+    try:
+        task_id_parsed = int(task_id)
+    except ValueError:
+        task_id_parsed = task_id
+    
     submissions_data = load_submissions()
     
     for sub in submissions_data["submissions"]:
-        if sub["id"] == submission_id and sub["task_id"] == task_id:
+        if sub["id"] == submission_id and str(sub["task_id"]) == str(task_id_parsed):
             if sub["status"] == "paid":
                 return jsonify({"success": False, "error": "already_paid"}), 400
             
             # Get task for amount
-            task = get_task_by_id(task_id)
+            task = get_task_by_id(task_id_parsed)
             amount = task["amount"] if task else sub.get("amount", 0)
             
             # Send payout
@@ -946,8 +982,20 @@ def approve_submission(task_id, submission_id):
                 sub["approved_by"] = "admin"
                 save_submissions(submissions_data)
                 
-                # Post GitHub comment
-                comment = f"""## ✅ Task Completed - Admin Approved
+                # Update external task if applicable
+                if task and task.get("source") == "external":
+                    external_data = load_external_tasks()
+                    for ext_task in external_data.get("tasks", []):
+                        if ext_task["id"] == task_id_parsed:
+                            if task["type"] == "one-time":
+                                ext_task["status"] = "completed"
+                            ext_task["completed_by"] = sub["wallet"]
+                            ext_task["completed_at"] = datetime.utcnow().isoformat() + "Z"
+                            break
+                    save_external_tasks(external_data)
+                elif task and task.get("source") == "github":
+                    # Post GitHub comment
+                    comment = f"""## ✅ Task Completed - Admin Approved
 
 **Submission ID:** `{submission_id}`
 **Agent Wallet:** `{sub['wallet']}`
@@ -957,7 +1005,7 @@ def approve_submission(task_id, submission_id):
 ---
 *Manually approved by admin*
 """
-                post_github_comment(task_id, comment)
+                    post_github_comment(task_id_parsed, comment)
                 
                 return jsonify({
                     "success": True,
@@ -977,13 +1025,19 @@ def approve_submission(task_id, submission_id):
 @require_admin
 def reject_submission(task_id, submission_id):
     """Manually reject a submission (admin only)."""
+    # Parse task_id for comparison
+    try:
+        task_id_parsed = int(task_id)
+    except ValueError:
+        task_id_parsed = task_id
+    
     data = request.get_json() or {}
     reason = data.get("reason", "Rejected by admin")
     
     submissions_data = load_submissions()
     
     for sub in submissions_data["submissions"]:
-        if sub["id"] == submission_id and sub["task_id"] == task_id:
+        if sub["id"] == submission_id and str(sub["task_id"]) == str(task_id_parsed):
             if sub["status"] == "paid":
                 return jsonify({"success": False, "error": "already_paid"}), 400
             
