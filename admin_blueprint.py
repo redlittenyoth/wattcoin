@@ -504,6 +504,10 @@ DASHBOARD_TEMPLATE = """
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
                 🔑 Scraper Keys
             </a>
+            <a href="{{ url_for('admin.clear_data') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🗑️ Clear Data
+            </a>
         </div>
         
         {% if message %}
@@ -578,21 +582,8 @@ DASHBOARD_TEMPLATE = """
                     🎯 Bounty Claims
                 </a>
             </div>
-            <button onclick="confirmClear()" class="text-xs text-gray-500 hover:text-red-400 transition">
-                🗑️ Clear All Data
-            </button>
         </div>
     </div>
-    
-    <script>
-        function confirmClear() {
-            if (confirm('⚠️ This will delete ALL reviews and payouts data. Are you sure?')) {
-                if (confirm('This action cannot be undone. Type "DELETE" mentally and click OK to confirm.')) {
-                    window.location.href = '{{ url_for("admin.clear_data") }}';
-                }
-            }
-        }
-    </script>
 </body>
 </html>
 """
@@ -1134,6 +1125,10 @@ API_KEYS_TEMPLATE = """
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
                 🔑 Scraper Keys
+            </a>
+            <a href="{{ url_for('admin.clear_data') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🗑️ Clear Data
             </a>
         </div>
         
@@ -1723,10 +1718,30 @@ CLEAR_DATA_HTML = """
     <div class="max-w-2xl mx-auto">
         <div class="flex justify-between items-center mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-green-400">⚡ Clear Test Data</h1>
-                <p class="text-gray-500 text-sm">Remove test entries from dashboard</p>
+                <h1 class="text-2xl font-bold text-green-400">⚡ WattCoin Admin</h1>
+                <p class="text-gray-500 text-sm">v2.1.0 | Clear Test Data</p>
             </div>
-            <a href="{{ url_for('admin.dashboard') }}" class="text-gray-400 hover:text-gray-200 text-sm">← Back</a>
+            <a href="{{ url_for('admin.logout') }}" class="text-gray-400 hover:text-red-400 text-sm">Logout</a>
+        </div>
+        
+        <!-- Nav Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-700">
+            <a href="{{ url_for('admin.dashboard') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🎯 PR Bounties
+            </a>
+            <a href="{{ url_for('admin.submissions') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                📋 Agent Tasks
+            </a>
+            <a href="{{ url_for('admin.api_keys') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔑 Scraper Keys
+            </a>
+            <a href="{{ url_for('admin.clear_data') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-green-400 text-green-400">
+                🗑️ Clear Data
+            </a>
         </div>
         
         {% if message %}
@@ -1851,6 +1866,10 @@ SUBMISSIONS_HTML = """
             <a href="{{ url_for('admin.api_keys') }}" 
                class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
                 🔑 Scraper Keys
+            </a>
+            <a href="{{ url_for('admin.clear_data') }}" 
+               class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🗑️ Clear Data
             </a>
         </div>
         
