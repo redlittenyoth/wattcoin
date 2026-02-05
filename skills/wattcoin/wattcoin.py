@@ -5,7 +5,7 @@ Setup:
     export WATT_WALLET_PRIVATE_KEY="your_base58_private_key"
     
 Requirements:
-    pip install solana requests base58
+    pip install solana solders requests base58
 """
 
 import os
@@ -44,87 +44,66 @@ def _get_wallet():
     private_key = os.getenv("WATT_WALLET_PRIVATE_KEY")
     if private_key:
         try:
-            from solana.keypair import Keypair
+            from solders.keypair import Keypair
             key_bytes = base58.b58decode(private_key)
             _wallet_cache = Keypair.from_bytes(key_bytes)
             return _wallet_cache
         except Exception as e:
-            raise ValueError(f"Invalid WATT_WALLET_PRIVATE_KEY: {e}")
+            raise RuntimeError(f"Failed to load wallet from WATT_WALLET_PRIVATE_KEY: {e}")
     
-    # Try wallet file
-    wallet_file = os.getenv("WATT_WALLET_FILE", os.path.expanduser("~/.wattcoin/wallet.json"))
-    if os.path.exists(wallet_file):
+    # Try config file
+    config_path = os.path.join(os.path.dirname(__file__), "config")
+    if os.path.exists(config_path):
         try:
-            from solana.keypair import Keypair
-            with open(wallet_file, 'r') as f:
-                key_data = json.load(f)
-            if isinstance(key_data, list):
-                _wallet_cache = Keypair.from_bytes(bytes(key_data))
-            else:
-                _wallet_cache = Keypair.from_bytes(base58.b58decode(key_data))
+            from solders.keypair import Keypair
+            with open(config_path) as f:
+                data = json.load(f)
+            key_bytes = base58.b58decode(data["private_key"])
+            _wallet_cache = Keypair.from_bytes(key_bytes)
             return _wallet_cache
         except Exception as e:
-            raise ValueError(f"Failed to load wallet from {wallet_file}: {e}")
+            raise RuntimeError(f"Failed to load wallet from config file: {e}")
     
-    raise ValueError(
-        "No wallet found. Set WATT_WALLET_PRIVATE_KEY env var or create ~/.wattcoin/wallet.json"
+    raise RuntimeError(
+        "No wallet configured. Set WATT_WALLET_PRIVATE_KEY environment variable "
+        "or create a config file with your private key."
     )
 
 def get_wallet_address() -> str:
-    """Get the public address of the configured wallet."""
+    """Get the public key of the configured wallet."""
     wallet = _get_wallet()
     return str(wallet.pubkey())
 
-# =============================================================================
-# BALANCE
-# =============================================================================
-
-def watt_balance(wallet: Optional[str] = None) -> float:
+def watt_balance() -> int:
     """
-    Get WATT balance for a wallet address.
+    Get current WATT balance.
     
-    Args:
-        wallet: Solana wallet address (default: your wallet)
-        
     Returns:
-        WATT balance as float
+        Integer balance (not decimals)
     """
-    if wallet is None:
-        wallet = get_wallet_address()
+    from solana.rpc.api import Client
+    from solders.pubkey import Pubkey
+    from spl.token.instructions import get_associated_token_address
+    from spl.token.constants import TOKEN_2022_PROGRAM_ID
+    
+    wallet = _get_wallet()
+    client = Client(SOLANA_RPC)
+    
+    mint = Pubkey.from_string(WATT_MINT)
+    owner = wallet.pubkey()
+    
+    ata = get_associated_token_address(owner, mint, token_program_id=TOKEN_2022_PROGRAM_ID)
     
     try:
-        # Get token accounts for wallet
-        resp = requests.post(SOLANA_RPC, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTokenAccountsByOwner",
-            "params": [
-                wallet,
-                {"mint": WATT_MINT},
-                {"encoding": "jsonParsed"}
-            ]
-        }, timeout=15)
-        
-        data = resp.json()
-        accounts = data.get("result", {}).get("value", [])
-        
-        if not accounts:
-            return 0.0
-        
-        # Sum balances from all token accounts
-        total = 0.0
-        for acc in accounts:
-            info = acc.get("account", {}).get("data", {}).get("parsed", {}).get("info", {})
-            amount = info.get("tokenAmount", {}).get("uiAmount", 0)
-            total += amount or 0
-        
-        return total
-        
-    except Exception as e:
-        raise RuntimeError(f"Failed to get balance: {e}")
+        resp = client.get_token_account_balance(ata)
+        if resp.value:
+            return int(resp.value.amount) // (10 ** WATT_DECIMALS)
+        return 0
+    except:
+        return 0
 
 # =============================================================================
-# SEND
+# PAYMENTS
 # =============================================================================
 
 def watt_send(to: str, amount: int) -> str:
@@ -139,40 +118,59 @@ def watt_send(to: str, amount: int) -> str:
         Transaction signature
     """
     from solana.rpc.api import Client
-    from solana.transaction import Transaction
-    from solana.publickey import PublicKey
-    from spl.token.instructions import transfer, get_associated_token_address
+    from solana.rpc.commitment import Confirmed
+    from solders.transaction import Transaction
+    from solders.message import Message
+    from solders.pubkey import Pubkey
+    from solders.instruction import Instruction, AccountMeta
+    from solders.hash import Hash
+    from spl.token.instructions import get_associated_token_address
     from spl.token.constants import TOKEN_2022_PROGRAM_ID
+    import struct
     
     wallet = _get_wallet()
     client = Client(SOLANA_RPC)
     
-    mint = PublicKey(WATT_MINT)
+    mint = Pubkey.from_string(WATT_MINT)
     from_pubkey = wallet.pubkey()
-    to_pubkey = PublicKey(to)
+    to_pubkey = Pubkey.from_string(to)
     
     # Get associated token addresses
     from_ata = get_associated_token_address(from_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID)
     to_ata = get_associated_token_address(to_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID)
     
-    # Build transfer instruction
+    # Build transfer instruction manually
+    # SPL Token Transfer instruction: [3, amount (u64, little-endian)]
     amount_raw = amount * (10 ** WATT_DECIMALS)
+    data = bytes([3]) + struct.pack("<Q", amount_raw)
     
-    ix = transfer(
-        source=from_ata,
-        dest=to_ata,
-        owner=from_pubkey,
-        amount=amount_raw,
-        program_id=TOKEN_2022_PROGRAM_ID
+    transfer_ix = Instruction(
+        program_id=TOKEN_2022_PROGRAM_ID,
+        accounts=[
+            AccountMeta(pubkey=from_ata, is_signer=False, is_writable=True),
+            AccountMeta(pubkey=mint, is_signer=False, is_writable=False),
+            AccountMeta(pubkey=to_ata, is_signer=False, is_writable=True),
+            AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
+        ],
+        data=data
     )
     
-    # Build and send transaction
-    tx = Transaction().add(ix)
-    tx.recent_blockhash = client.get_latest_blockhash().value.blockhash
-    tx.fee_payer = from_pubkey
-    tx.sign(wallet)
+    # Get recent blockhash
+    blockhash_resp = client.get_latest_blockhash()
+    recent_blockhash = Hash.from_string(str(blockhash_resp.value.blockhash))
     
-    result = client.send_transaction(tx, wallet)
+    # Build message and transaction
+    msg = Message.new_with_blockhash(
+        [transfer_ix],
+        from_pubkey,
+        recent_blockhash
+    )
+    
+    tx = Transaction.new_unsigned(msg)
+    tx = Transaction([wallet], msg, recent_blockhash)
+    
+    # Send transaction
+    result = client.send_transaction(tx)
     
     if result.value:
         return str(result.value)
@@ -259,7 +257,7 @@ def watt_scrape(url: str, format: str = "text") -> Dict[str, Any]:
     data = resp.json()
     
     if not data.get("success"):
-        raise RuntimeError(f"Scrape failed: {data.get('error', 'Unknown error')}")
+        raise RuntimeError(f"Scrape failed: {data.get('message', data.get('error', 'Unknown error'))}")
     
     return data
 
@@ -267,219 +265,116 @@ def watt_scrape(url: str, format: str = "text") -> Dict[str, Any]:
 # TASKS
 # =============================================================================
 
-def watt_tasks(task_type: Optional[str] = None, min_amount: Optional[int] = None, source: Optional[str] = None) -> Dict[str, Any]:
+def watt_tasks(task_type: Optional[str] = None, min_reward: Optional[int] = None) -> Dict[str, Any]:
     """
-    List available agent tasks.
+    Get available tasks from WattCoin network.
     
     Args:
-        task_type: Filter by 'recurring' or 'one-time'
-        min_amount: Minimum WATT reward
-        source: Filter by 'github' or 'external' (agent-posted)
+        task_type: Filter by type ('bounty', 'agent', or None for all)
+        min_reward: Filter by minimum WATT reward
         
     Returns:
-        Dict with 'tasks' list, 'count', 'github_tasks', 'external_tasks', 'total_watt'
+        Dict with 'tasks' list
     """
     params = {}
     if task_type:
         params["type"] = task_type
-    if min_amount:
-        params["min_amount"] = min_amount
-    if source:
-        params["source"] = source
+    if min_reward:
+        params["min_reward"] = min_reward
     
-    resp = requests.get(
-        f"{API_BASE}/api/v1/tasks",
-        params=params,
-        timeout=15
-    )
-    
+    resp = requests.get(f"{API_BASE}/api/v1/tasks", params=params, timeout=10)
     return resp.json()
 
-def watt_bounties(bounty_type: Optional[str] = None) -> Dict[str, Any]:
+def watt_submit(task_id: int, result: Dict[str, Any]) -> Dict[str, Any]:
     """
-    List open bounties and agent tasks.
+    Submit task result for verification and payout.
     
     Args:
-        bounty_type: Filter by 'bounty', 'agent', or 'all' (default)
-    
+        task_id: ID of the completed task
+        result: Task result data (format depends on task type)
+        
     Returns:
-        Dict with 'items' list, 'total', 'total_bounties', 'total_agent_tasks', 'total_watt'
+        Dict with 'success', 'watt_earned', 'tx_signature', etc.
     """
-    params = {}
-    if bounty_type:
-        params["type"] = bounty_type
+    wallet = get_wallet_address()
     
-    resp = requests.get(f"{API_BASE}/api/v1/bounties", params=params, timeout=15)
-    return resp.json()
-
-def watt_stats() -> Dict[str, Any]:
-    """
-    Get network-wide statistics.
+    resp = requests.post(
+        f"{API_BASE}/api/v1/tasks/{task_id}/submit",
+        json={
+            "wallet": wallet,
+            "result": result
+        },
+        timeout=30
+    )
     
-    Returns:
-        Dict with 'nodes', 'jobs', 'payouts' statistics
-    """
-    resp = requests.get(f"{API_BASE}/api/v1/stats", timeout=15)
-    return resp.json()
+    data = resp.json()
+    
+    if not data.get("success"):
+        raise RuntimeError(f"Task submission failed: {data.get('message', data.get('error', 'Unknown error'))}")
+    
+    return data
 
 def watt_post_task(
     title: str,
     description: str,
     reward: int,
-    tx_signature: str,
-    task_type: str = "one-time",
-    deadline: Optional[str] = None
+    verification_criteria: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Post a task for other agents to complete.
-    
-    Must first send WATT to TREASURY_WALLET, then provide the tx_signature.
+    Post a new task to the network (500+ WATT stake required).
     
     Args:
-        title: Task title (1-200 chars)
-        description: Task description (1-5000 chars)
-        reward: WATT reward (min 500)
-        tx_signature: Transaction signature of WATT payment to treasury
-        task_type: 'one-time' or 'recurring'
-        deadline: Optional deadline (ISO format)
+        title: Task title
+        description: Task description
+        reward: WATT reward for completion
+        verification_criteria: Optional criteria for auto-verification
         
     Returns:
-        Dict with 'task_id', 'status', 'submit_endpoint'
-        
-    Example:
-        # First pay WATT to treasury
-        tx = watt_send(TREASURY_WALLET, 1000)
-        
-        # Then post task
-        task = watt_post_task(
-            title="Daily weather check",
-            description="Fetch NYC weather, return JSON",
-            reward=1000,
-            tx_signature=tx
-        )
-        print(f"Task posted: {task['task_id']}")
+        Dict with 'task_id', 'tx_signature', etc.
     """
     if reward < MIN_TASK_REWARD:
-        raise ValueError(f"Minimum reward is {MIN_TASK_REWARD} WATT")
+        raise ValueError(f"Reward must be at least {MIN_TASK_REWARD} WATT")
     
-    payload = {
-        "title": title,
-        "description": description,
-        "reward": reward,
-        "tx_signature": tx_signature,
-        "poster_wallet": get_wallet_address(),
-        "type": task_type
-    }
+    # Send stake payment
+    tx_sig = watt_send(BOUNTY_WALLET, reward)
     
-    if deadline:
-        payload["deadline"] = deadline
+    # Wait for confirmation
+    import time
+    time.sleep(3)
+    
+    wallet = get_wallet_address()
     
     resp = requests.post(
         f"{API_BASE}/api/v1/tasks",
-        json=payload,
+        json={
+            "title": title,
+            "description": description,
+            "reward": reward,
+            "wallet": wallet,
+            "tx_signature": tx_sig,
+            "verification_criteria": verification_criteria or {}
+        },
         timeout=30
     )
     
-    return resp.json()
+    data = resp.json()
+    
+    if not data.get("success"):
+        raise RuntimeError(f"Task posting failed: {data.get('message', data.get('error', 'Unknown error'))}")
+    
+    return data
 
 # =============================================================================
-# SUBMIT
+# MAIN EXPORTS
 # =============================================================================
 
-def watt_submit(task_id: int, result: Dict[str, Any], wallet: str) -> str:
-    """
-    Format task submission for GitHub issue comment.
-    
-    Args:
-        task_id: GitHub issue number
-        result: Task result data (JSON-serializable)
-        wallet: Your wallet address for payout
-        
-    Returns:
-        Formatted comment text to post on GitHub issue
-    """
-    submission = f"""## Task Submission
-
-**Wallet:** `{wallet}`
-
-**Result:**
-```json
-{json.dumps(result, indent=2)}
-```
-
----
-*Submitted via WattCoin Skill*
-"""
-    
-    print(f"\n📋 Post this comment on GitHub Issue #{task_id}:")
-    print(f"   https://github.com/WattCoin-Org/wattcoin/issues/{task_id}")
-    print("-" * 50)
-    print(submission)
-    print("-" * 50)
-    
-    return submission
-
-# =============================================================================
-# CONVENIENCE
-# =============================================================================
-
-def watt_info() -> Dict[str, Any]:
-    """Get WattCoin info and your wallet status."""
-    try:
-        wallet = get_wallet_address()
-        balance = watt_balance()
-    except:
-        wallet = None
-        balance = None
-    
-    return {
-        "mint": WATT_MINT,
-        "api": API_BASE,
-        "bounty_wallet": BOUNTY_WALLET,
-        "treasury_wallet": TREASURY_WALLET,
-        "your_wallet": wallet,
-        "your_balance": balance,
-        "llm_price": LLM_PRICE,
-        "scrape_price": SCRAPE_PRICE,
-        "min_task_reward": MIN_TASK_REWARD
-    }
-
-# =============================================================================
-# CLI
-# =============================================================================
-
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) < 2:
-        print("WattCoin Skill")
-        print("Commands: balance, tasks, stats, info")
-        sys.exit(0)
-    
-    cmd = sys.argv[1]
-    
-    if cmd == "balance":
-        wallet = sys.argv[2] if len(sys.argv) > 2 else None
-        print(f"Balance: {watt_balance(wallet)} WATT")
-    
-    elif cmd == "tasks":
-        source = sys.argv[2] if len(sys.argv) > 2 else None
-        tasks = watt_tasks(source=source)
-        print(f"Found {tasks['count']} tasks ({tasks.get('github_tasks', 0)} GitHub, {tasks.get('external_tasks', 0)} external)")
-        print(f"Total: {tasks['total_watt']} WATT")
-        for t in tasks.get("tasks", []):
-            print(f"  {t['id']}: {t['title']} - {t['amount']} WATT [{t.get('source', 'github')}]")
-    
-    elif cmd == "stats":
-        stats = watt_stats()
-        print(f"Active nodes: {stats.get('nodes', {}).get('active', 0)}")
-        print(f"Jobs completed: {stats.get('jobs', {}).get('total_completed', 0)}")
-        print(f"Total WATT paid: {stats.get('payouts', {}).get('total_watt', 0)}")
-    
-    elif cmd == "info":
-        info = watt_info()
-        for k, v in info.items():
-            print(f"{k}: {v}")
-    
-    else:
-        print(f"Unknown command: {cmd}")
+__all__ = [
+    "get_wallet_address",
+    "watt_balance",
+    "watt_send",
+    "watt_query",
+    "watt_scrape",
+    "watt_tasks",
+    "watt_submit",
+    "watt_post_task",
+]
