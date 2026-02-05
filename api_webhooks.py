@@ -659,3 +659,133 @@ def webhook_health():
     }), 200
 
 
+
+@app.route('/webhooks/github/issues', methods=['POST'])
+def handle_issue_webhook():
+    """Handle GitHub issue events for autonomous bounty evaluation"""
+    payload = request.json
+    action = payload.get('action')
+    issue = payload.get('issue', {})
+    
+    # Only evaluate newly opened issues
+    if action != 'opened':
+        return jsonify({"status": "ignored", "reason": f"Action '{action}' not handled"}), 200
+    
+    issue_number = issue['number']
+    issue_title = issue['title']
+    issue_body = issue.get('body', '')
+    issue_url = issue['html_url']
+    existing_labels = [label['name'] for label in issue.get('labels', [])]
+    
+    app.logger.info(f"[BOUNTY EVAL] New issue #{issue_number}: {issue_title}")
+    
+    # Skip if already has bounty label
+    if 'bounty' in existing_labels:
+        app.logger.info(f"[BOUNTY EVAL] Issue #{issue_number} already has bounty label, skipping")
+        return jsonify({"status": "skipped", "reason": "already has bounty label"}), 200
+    
+    # Evaluate with Grok
+    from bounty_evaluator import evaluate_bounty_request
+    
+    result = evaluate_bounty_request(issue_title, issue_body, existing_labels)
+    
+    if result.get("decision") == "ERROR":
+        app.logger.error(f"[BOUNTY EVAL] Evaluation failed: {result.get('error')}")
+        return jsonify({"status": "error", "error": result.get('error')}), 500
+    
+    # Post evaluation results as comment
+    comment_body = f"""## 🤖 Autonomous Bounty Evaluation
+
+**Decision**: {result['decision']}  
+**Score**: {result.get('score', 0)}/10
+
+"""
+    
+    if result['decision'] == 'APPROVE':
+        comment_body += f"""**Bounty Amount**: {result['amount']:,} WATT
+
+{result['reasoning']}
+
+---
+
+This issue has been approved for a bounty! To claim it:
+1. Create a PR that solves this issue
+2. Reference this issue with "Closes #{issue_number}"
+3. Include your Solana wallet address in the PR description
+4. Pass automated review (score ≥8/10)
+"""
+        
+        # Update issue title
+        new_title = result.get('suggested_title', f"[BOUNTY: {result['amount']} WATT] {issue_title}")
+        update_issue_title(issue_number, new_title)
+        
+        # Add bounty label
+        add_issue_label(issue_number, 'bounty')
+        
+        app.logger.info(f"[BOUNTY EVAL] Issue #{issue_number} APPROVED: {result['amount']:,} WATT")
+        
+    else:
+        comment_body += f"""{result.get('reasoning', 'This request does not meet the criteria for a bounty.')}
+
+---
+
+This issue was not approved for a bounty. Common reasons:
+- Not aligned with WattCoin's core mission (AI agent economy)
+- Vague or low-effort request
+- Duplicate of existing work
+- Low impact relative to effort
+
+For more information on bounty criteria, see our contribution guidelines."""
+        
+        app.logger.info(f"[BOUNTY EVAL] Issue #{issue_number} REJECTED (score: {result.get('score', 0)}/10)")
+    
+    # Post comment
+    post_comment(issue_url, comment_body)
+    
+    return jsonify({
+        "status": "evaluated",
+        "decision": result['decision'],
+        "amount": result.get('amount', 0)
+    }), 200
+
+
+def update_issue_title(issue_number, new_title):
+    """Update an issue's title via GitHub API"""
+    import requests
+    import os
+    
+    github_token = os.getenv("GITHUB_TOKEN")
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    resp = requests.patch(
+        f"https://api.github.com/repos/WattCoin-Org/wattcoin/issues/{issue_number}",
+        headers=headers,
+        json={"title": new_title}
+    )
+    
+    return resp.status_code in [200, 201]
+
+
+def add_issue_label(issue_number, label):
+    """Add a label to an issue"""
+    import requests
+    import os
+    
+    github_token = os.getenv("GITHUB_TOKEN")
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    resp = requests.post(
+        f"https://api.github.com/repos/WattCoin-Org/wattcoin/issues/{issue_number}/labels",
+        headers=headers,
+        json={"labels": [label]}
+    )
+    
+    return resp.status_code in [200, 201]
+
+
