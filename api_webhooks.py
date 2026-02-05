@@ -122,9 +122,12 @@ def trigger_grok_review(pr_number):
         base_url = os.getenv("BASE_URL", "http://localhost:5000")
         review_url = f"{base_url}/api/v1/review_pr"
         
+        # Review endpoint expects pr_url, not pr_number
+        pr_url = f"https://github.com/{REPO}/pull/{pr_number}"
+        
         resp = requests.post(
             review_url,
-            json={"pr_number": pr_number},
+            json={"pr_url": pr_url},
             headers={"Content-Type": "application/json"},
             timeout=60
         )
@@ -530,4 +533,5 @@ def webhook_health():
         "status": "ok",
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET)
     }), 200
+
 
