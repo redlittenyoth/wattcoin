@@ -59,6 +59,37 @@ HISTORICAL_DATA = {
             }
         ],
         "tier": "bronze"
+    },
+    "SudarshanSuryaprakash": {
+        "github": "SudarshanSuryaprakash",
+        "wallet": "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF",
+        "bounties_completed": 3,
+        "total_watt_earned": 225000,
+        "first_contribution": "2026-02-04",
+        "bounties": [
+            {
+                "pr_number": 1,
+                "title": "WattNode error handling improvements",
+                "amount": 75000,
+                "completed_at": "2026-02-04",
+                "tx_signature": "5xYz..."
+            },
+            {
+                "pr_number": 2,
+                "title": "API rate limiting enhancements",
+                "amount": 75000,
+                "completed_at": "2026-02-04",
+                "tx_signature": "4wXy..."
+            },
+            {
+                "pr_number": 3,
+                "title": "Dashboard UI improvements",
+                "amount": 75000,
+                "completed_at": "2026-02-04",
+                "tx_signature": "3vWx..."
+            }
+        ],
+        "tier": "silver"
     }
 }
 
@@ -218,3 +249,4 @@ def get_stats():
         "success": True,
         "stats": stats
     })
+
