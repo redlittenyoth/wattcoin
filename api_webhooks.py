@@ -587,7 +587,9 @@ An admin will review and process the payout manually if applicable.
     # Execute payment automatically
     post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
     
-    tx_signature, payment_error = execute_auto_payment(pr_number, wallet, amount)
+    queue_payment(pr_number, wallet, amount)
+        tx_signature = None
+        payment_error = None
     
     if payment_error:
         # Payment failed - queue for manual review
