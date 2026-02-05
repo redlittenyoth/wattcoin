@@ -2218,6 +2218,65 @@ def approve_submission(sub_id):
 
 @admin_bp.route('/submissions/reject/<sub_id>', methods=['POST'])
 @login_required
+
+@admin_bp.route('/process_payments', methods=['POST'])
+def process_payment_queue():
+    """Process all pending payments in the queue"""
+    import json
+    import os
+    from datetime import datetime
+    
+    queue_file = "/app/data/payment_queue.json"
+    
+    if not os.path.exists(queue_file):
+        return jsonify({"success": False, "message": "No payments in queue"}), 404
+    
+    # Load queue
+    with open(queue_file, 'r') as f:
+        queue = json.load(f)
+    
+    results = []
+    updated_queue = []
+    
+    for payment in queue:
+        if payment.get("status") != "pending":
+            updated_queue.append(payment)
+            continue
+        
+        pr_number = payment["pr_number"]
+        wallet = payment["wallet"]
+        amount = payment["amount"]
+        
+        # Import execute_auto_payment from api_webhooks
+        from api_webhooks import execute_auto_payment
+        
+        # Execute payment
+        tx_signature, error = execute_auto_payment(pr_number, wallet, amount)
+        
+        if tx_signature:
+            payment["status"] = "completed"
+            payment["tx_signature"] = tx_signature
+            payment["processed_at"] = datetime.utcnow().isoformat()
+            results.append(f"✅ PR #{pr_number}: {amount:,} WATT → {tx_signature[:16]}...")
+        else:
+            payment["status"] = "failed"
+            payment["error"] = error
+            payment["failed_at"] = datetime.utcnow().isoformat()
+            results.append(f"❌ PR #{pr_number}: {error}")
+        
+        updated_queue.append(payment)
+    
+    # Save updated queue
+    with open(queue_file, 'w') as f:
+        json.dump(updated_queue, f, indent=2)
+    
+    return jsonify({
+        "success": True,
+        "processed": len(results),
+        "results": results
+    })
+
+
 def reject_submission(sub_id):
     """Reject a pending submission."""
     data = load_submissions()
