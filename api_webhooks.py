@@ -1,16 +1,19 @@
 """
 WattCoin GitHub Webhook Handler
-POST /webhooks/github - Handle PR merge events
+POST /webhooks/github - Handle PR events with full automation
 
 Listens for:
-- pull_request (action: closed + merged = true)
+- pull_request (action: opened) → Auto-trigger Grok review
+- pull_request (action: synchronize) → Auto-trigger Grok review on updates
+- pull_request (action: closed + merged = true) → Auto-execute payment
 
-On merge:
-- Verifies PR passed Grok review
-- Checks if PR references a bounty issue
-- Extracts wallet from PR body
-- Queues payout (manual approval required)
-- Posts status comment
+Full Automation Flow:
+1. PR opened → Grok reviews code automatically
+2. If score ≥ 85% → Auto-merge PR
+3. On merge → Auto-execute payment via bounty_auto_pay.py
+4. Post TX signature to PR comments
+
+Fallback: If auto-payment fails, queues for manual approval.
 """
 
 import os
@@ -39,6 +42,7 @@ webhooks_bp = Blueprint('webhooks', __name__)
 
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+BASE_URL = os.getenv("BASE_URL", "https://wattcoin-production-81a7.up.railway.app")  # For internal API calls
 REPO = "WattCoin-Org/wattcoin"
 
 PR_REVIEWS_FILE = f"{DATA_DIR}/pr_reviews.json"
@@ -100,6 +104,155 @@ def post_github_comment(issue_number, comment):
         return resp.status_code in [200, 201]
     except:
         return False
+
+# =============================================================================
+# AUTO-REVIEW & AUTO-MERGE
+# =============================================================================
+
+def trigger_grok_review(pr_number):
+    """
+    Trigger Grok review for a PR.
+    Calls the review endpoint internally.
+    Returns: (review_result, error)
+    """
+    import requests
+    
+    try:
+        # Call internal review endpoint
+        base_url = os.getenv("BASE_URL", "http://localhost:5000")
+        review_url = f"{base_url}/api/v1/review_pr"
+        
+        resp = requests.post(
+            review_url,
+            json={"pr_number": pr_number},
+            headers={"Content-Type": "application/json"},
+            timeout=60
+        )
+        
+        if resp.status_code == 200:
+            return resp.json(), None
+        else:
+            return None, f"Review failed: {resp.status_code}"
+    
+    except Exception as e:
+        return None, f"Review error: {e}"
+
+def auto_merge_pr(pr_number, review_score):
+    """
+    Auto-merge a PR if it passes threshold.
+    Returns: (success, error)
+    """
+    import requests
+    
+    MERGE_THRESHOLD = 85  # Require 85% score for auto-merge
+    
+    if review_score < MERGE_THRESHOLD:
+        return False, f"Score {review_score} < {MERGE_THRESHOLD} threshold"
+    
+    try:
+        url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}/merge"
+        resp = requests.put(
+            url,
+            headers=github_headers(),
+            json={
+                "commit_title": f"Auto-merge PR #{pr_number} (Grok score: {review_score}/100)",
+                "commit_message": f"Automatically merged after passing Grok review with score {review_score}/100",
+                "merge_method": "squash"
+            },
+            timeout=15
+        )
+        
+        if resp.status_code == 200:
+            return True, None
+        else:
+            return False, f"Merge failed: {resp.status_code} - {resp.text}"
+    
+    except Exception as e:
+        return False, f"Merge error: {e}"
+
+def execute_auto_payment(pr_number, wallet, amount):
+    """
+    Execute payment automatically using bounty_auto_pay.py
+    Returns: (tx_signature, error)
+    """
+    import subprocess
+    
+    try:
+        # Call bounty_auto_pay.py script
+        result = subprocess.run(
+            ["python3", "bounty_auto_pay.py", str(pr_number)],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode == 0:
+            # Extract TX signature from output
+            output = result.stdout
+            import re
+            tx_match = re.search(r'TX: ([A-Za-z0-9]{87,88})', output)
+            if tx_match:
+                return tx_match.group(1), None
+            else:
+                return "success", None  # Payment succeeded but couldn't extract TX
+        else:
+            return None, f"Payment failed: {result.stderr}"
+    
+    except Exception as e:
+        return None, f"Payment error: {e}"
+
+def handle_pr_review_trigger(pr_number, action):
+    """
+    Handle PR opened or synchronized - trigger Grok review and auto-merge if passed.
+    """
+    log_security_event("pr_review_triggered", {
+        "pr_number": pr_number,
+        "action": action
+    })
+    
+    # Post initial comment
+    post_github_comment(pr_number, "🤖 **Grok review triggered...** Analyzing code changes...")
+    
+    # Trigger Grok review
+    review_result, review_error = trigger_grok_review(pr_number)
+    
+    if review_error:
+        post_github_comment(pr_number, f"❌ **Review failed:** {review_error}")
+        return jsonify({"message": "Review failed", "error": review_error}), 500
+    
+    review_data = review_result.get("review", {})
+    score = review_data.get("score", 0)
+    passed = review_data.get("pass", False)
+    
+    # If review passed threshold, auto-merge
+    if passed and score >= 85:
+        # Attempt auto-merge
+        merged, merge_error = auto_merge_pr(pr_number, score)
+        
+        if merged:
+            post_github_comment(
+                pr_number,
+                f"✅ **Auto-merged!** Grok score: {score}/100\n\n"
+                f"Payment will be processed automatically after merge completes."
+            )
+            
+            log_security_event("pr_auto_merged", {
+                "pr_number": pr_number,
+                "score": score
+            })
+        else:
+            post_github_comment(
+                pr_number,
+                f"⚠️ **Review passed** (score: {score}/100) but auto-merge failed: {merge_error}\n\n"
+                f"Please merge manually."
+            )
+    
+    return jsonify({
+        "message": "Review completed",
+        "score": score,
+        "passed": passed,
+        "auto_merged": passed and score >= 85
+    }), 200
 
 # =============================================================================
 # PAYOUT QUEUE
@@ -186,7 +339,11 @@ def github_webhook():
     pr_number = pr.get("number")
     merged = pr.get("merged", False)
     
-    # Only process when PR is closed AND merged
+    # Handle PR opened or synchronized (updated) - trigger auto-review
+    if action in ["opened", "synchronize"]:
+        return handle_pr_review_trigger(pr_number, action)
+    
+    # Only process merge events below this point
     if action != "closed" or not merged:
         return jsonify({"message": f"Ignoring action: {action}, merged: {merged}"}), 200
     
@@ -302,41 +459,64 @@ An admin will review and process the payout manually if applicable.
         
         return jsonify({"message": "No bounty amount found"}), 200
     
-    # Queue payout for manual approval
-    payout_id = queue_payout(pr_number, wallet, amount, bounty_issue_id, review_data)
+    # Execute payment automatically
+    post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
     
-    # Post success comment
-    approval_text = "two admin approvals" if REQUIRE_DOUBLE_APPROVAL else "admin approval"
+    tx_signature, payment_error = execute_auto_payment(pr_number, wallet, amount)
     
-    comment = f"""## 🎉 PR Merged - Payout Queued
+    if payment_error:
+        # Payment failed - queue for manual review
+        payout_id = queue_payout(pr_number, wallet, amount, bounty_issue_id, review_data)
+        
+        comment = f"""## ⚠️ Auto-Payment Failed
 
 **Bounty Amount**: {amount:,} WATT
 **Payout Wallet**: `{wallet[:8]}...{wallet[-8:]}`
+**Error**: {payment_error}
+
+Your payout has been queued (#{payout_id}) for manual processing by an admin.
+"""
+        post_github_comment(pr_number, comment)
+        
+        log_security_event("auto_payment_failed", {
+            "pr_number": pr_number,
+            "wallet": wallet,
+            "amount": amount,
+            "error": payment_error,
+            "payout_id": payout_id
+        })
+        
+        return jsonify({
+            "message": "Payment failed, queued for manual review",
+            "payout_id": payout_id
+        }), 200
+    
+    # Payment succeeded!
+    comment = f"""## 🎉 Payment Sent!
+
+**Bounty Amount**: {amount:,} WATT
+**Payout Wallet**: `{wallet}`
 **Review Score**: {review_result.get('score', 'N/A')}/10
-**Payout ID**: #{payout_id}
-
-Your payout has been queued and is pending {approval_text}.
-
-You will receive the WATT tokens once approved by a maintainer.
+**TX Signature**: [{tx_signature[:8]}...{tx_signature[-8:]}](https://solscan.io/tx/{tx_signature})
 
 Thank you for your contribution! 🚀
 """
     
     post_github_comment(pr_number, comment)
     
-    log_security_event("payout_queued", {
-        "payout_id": payout_id,
+    log_security_event("auto_payment_success", {
         "pr_number": pr_number,
         "wallet": wallet,
         "amount": amount,
+        "tx_signature": tx_signature,
         "bounty_issue_id": bounty_issue_id
     })
     
     return jsonify({
-        "message": "Payout queued",
-        "payout_id": payout_id,
+        "message": "Payment sent",
         "amount": amount,
-        "wallet": wallet
+        "wallet": wallet,
+        "tx_signature": tx_signature
     }), 200
 
 # =============================================================================
@@ -350,3 +530,4 @@ def webhook_health():
         "status": "ok",
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET)
     }), 200
+
