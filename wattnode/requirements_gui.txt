@@ -1,7 +1,13 @@
-# WattNode GUI Dependencies
-requests>=2.28.0
-beautifulsoup4>=4.12.0
-pillow>=9.0.0
+# WattNode GUI Requirements
+# Install with: pip install -r requirements_gui.txt
 
-# Build tools (optional, for creating installer)
-# pyinstaller>=5.0.0
+# Core dependencies
+requests>=2.31.0
+pillow>=10.0.0
+
+# For earnings graph visualization
+matplotlib>=3.7.0
+
+# Optional: System tray support
+# pystray>=0.19.4
+# Pillow already installed above
