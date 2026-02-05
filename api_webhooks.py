@@ -119,12 +119,16 @@ def trigger_grok_review(pr_number):
     
     try:
         # Call internal review endpoint
-        base_url = os.getenv("BASE_URL", "http://localhost:5000")
-        review_url = f"{base_url}/api/v1/review_pr"
+        # Use module-level BASE_URL constant (no localhost default!)
+        review_url = f"{BASE_URL}/api/v1/review_pr"
         
         # Review endpoint expects pr_url, not pr_number
         pr_url = f"https://github.com/{REPO}/pull/{pr_number}"
         
+
+        # Log the internal call attempt
+        print(f"[WEBHOOK] Calling internal review endpoint: {review_url} for PR #{pr_number}", flush=True)
+
         resp = requests.post(
             review_url,
             json={"pr_url": pr_url},
@@ -132,12 +136,19 @@ def trigger_grok_review(pr_number):
             timeout=60
         )
         
+
+        # Log response status
+        print(f"[WEBHOOK] Review call returned {resp.status_code}", flush=True)
+        if resp.status_code != 200:
+            print(f"[WEBHOOK] Error response: {resp.text[:500]}", flush=True)
+
         if resp.status_code == 200:
             return resp.json(), None
         else:
             return None, f"Review failed: {resp.status_code}"
     
     except Exception as e:
+        print(f"[WEBHOOK] Exception calling review: {e}", flush=True)
         return None, f"Review error: {e}"
 
 def auto_merge_pr(pr_number, review_score):
