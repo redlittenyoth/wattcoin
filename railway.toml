@@ -4,3 +4,37 @@ builder = "nixpacks"
 [deploy]
 startCommand = "python bridge_web.py"
 restartPolicyType = "on_failure"
+
+# Path-based deploy rules: Only redeploy when critical backend files change
+[watch]
+# TRIGGERS DEPLOY - Core backend API files
+include = [
+  "api_*.py",           # All API endpoints
+  "bridge_web.py",      # Main server
+  "bridge.py",          # Bridge logic
+  "bounty_auto_pay.py", # Bounty automation
+  "pr_security.py",     # Security checks
+  "scraper_errors.py",  # Error handling
+  "admin_blueprint.py", # Admin panel
+  "requirements.txt",   # Dependencies
+  "railway.toml",       # This config file
+  "railway.json"        # Railway config
+]
+
+# NO DEPLOY - Documentation, tests, client-side, tracking files
+exclude = [
+  "docs/**",            # Documentation
+  "*.md",               # All markdown (README, CONTRIBUTING, etc.)
+  ".github/**",         # GitHub workflows
+  "tests/**",           # Test files
+  "contracts/**",       # Smart contracts (reference)
+  "deployment/**",      # Deployment docs
+  "skills/**",          # Agent skills
+  "data/**",            # Static data
+  "bounty/**",          # Bounty tracking files
+  "tipping/**",         # Tipping client
+  "wattnode/**",        # WattNode client
+  "*.html",             # HTML files
+  ".gitignore",
+  "LICENSE"
+]
