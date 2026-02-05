@@ -96,18 +96,21 @@ def get_bounty_wallet():
 # SOLANA PAYMENT
 # =============================================================================
 
-def send_watt(recipient: str, amount: int) -> str:
+def send_watt(recipient: str, amount: int, memo: str = None) -> str:
     """
-    Send WATT to recipient address.
+    Send WATT to recipient address with optional on-chain memo.
     
     Args:
         recipient: Solana wallet address
         amount: WATT amount (whole tokens, not lamports)
+        memo: Optional transaction memo (shows on explorer)
     
     Returns:
         Transaction signature
     """
     print(f"💸 Sending {amount:,} WATT to {recipient[:8]}...")
+    if memo:
+        print(f"📝 Memo: {memo}")
     
     try:
         # Load wallet
@@ -147,13 +150,32 @@ def send_watt(recipient: str, amount: int) -> str:
             data=data
         )
         
+        # Build instructions list
+        instructions = []
+        
+        # Add memo instruction if provided
+        if memo:
+            # SPL Memo Program ID
+            memo_program = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
+            memo_ix = Instruction(
+                program_id=memo_program,
+                accounts=[
+                    AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
+                ],
+                data=memo.encode('utf-8')
+            )
+            instructions.append(memo_ix)
+        
+        # Add transfer instruction
+        instructions.append(transfer_ix)
+        
         # Get blockhash
         blockhash_resp = client.get_latest_blockhash()
         recent_blockhash = Hash.from_string(str(blockhash_resp.value.blockhash))
         
-        # Build message
+        # Build message with all instructions
         msg = Message.new_with_blockhash(
-            [transfer_ix],
+            instructions,
             from_pubkey,
             recent_blockhash
         )
@@ -330,7 +352,10 @@ def process_payout(pr_number: int):
     
     # Step 6: Send payment
     try:
-        tx_sig = send_watt(wallet, amount)
+        # Build memo for on-chain proof
+        author = payout.get('author', 'unknown')
+        memo = f"WattCoin Agent Payment | PR #{pr_number} | @{author} | {amount:,} WATT"
+        tx_sig = send_watt(wallet, amount, memo=memo)
     except Exception as e:
         print(f"\n❌ PAYMENT FAILED: {e}")
         sys.exit(1)
@@ -390,3 +415,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     process_payout(pr_number)
+
