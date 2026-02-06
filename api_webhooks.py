@@ -4,12 +4,12 @@ WattCoin GitHub Webhook Handler
 POST /webhooks/github - Handle PR events with full automation
 
 Listens for:
-- pull_request (action: opened) → Auto-trigger Grok review
-- pull_request (action: synchronize) → Auto-trigger Grok review on updates
+- pull_request (action: opened) → Auto-trigger AI review
+- pull_request (action: synchronize) → Auto-trigger AI review on updates
 - pull_request (action: closed + merged = true) → Auto-execute payment
 
 Full Automation Flow:
-1. PR opened → Grok reviews code automatically
+1. PR opened → AI reviews code automatically
 2. If score ≥ 85% → Auto-merge PR
 3. On merge → Auto-execute payment via bounty_auto_pay.py
 4. Post TX signature to PR comments
@@ -110,9 +110,9 @@ def post_github_comment(issue_number, comment):
 # AUTO-REVIEW & AUTO-MERGE
 # =============================================================================
 
-def trigger_grok_review(pr_number):
+def trigger_ai_review(pr_number):
     """
-    Trigger Grok review for a PR.
+    Trigger AI review for a PR.
     Calls the review endpoint internally.
     Returns: (review_result, error)
     """
@@ -159,7 +159,7 @@ def auto_merge_pr(pr_number, review_score):
     """
     import requests
     
-    MERGE_THRESHOLD = 8  # Grok scores are 1-10, not 1-100 (8/10 = 80%)
+    MERGE_THRESHOLD = 8  # AI scores are 1-10, not 1-100 (8/10 = 80%)
     
     if review_score < MERGE_THRESHOLD:
         return False, f"Score {review_score} < {MERGE_THRESHOLD} threshold"
@@ -170,8 +170,8 @@ def auto_merge_pr(pr_number, review_score):
             url,
             headers=github_headers(),
             json={
-                "commit_title": f"Auto-merge PR #{pr_number} (Grok score: {review_score}/100)",
-                "commit_message": f"Automatically merged after passing Grok review with score {review_score}/100",
+                "commit_title": f"Auto-merge PR #{pr_number} (AI score: {review_score}/100)",
+                "commit_message": f"Automatically merged after passing AI review with score {review_score}/100",
                 "merge_method": "squash"
             },
             timeout=15
@@ -425,7 +425,7 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
 
 def handle_pr_review_trigger(pr_number, action):
     """
-    Handle PR opened or synchronized - trigger Grok review and auto-merge if passed.
+    Handle PR opened or synchronized - trigger AI review and auto-merge if passed.
     """
     log_security_event("pr_review_triggered", {
         "pr_number": pr_number,
@@ -433,10 +433,10 @@ def handle_pr_review_trigger(pr_number, action):
     })
     
     # Post initial comment
-    post_github_comment(pr_number, "🤖 **Grok review triggered...** Analyzing code changes...")
+    post_github_comment(pr_number, "🤖 **AI review triggered...** Analyzing code changes...")
     
-    # Trigger Grok review
-    review_result, review_error = trigger_grok_review(pr_number)
+    # Trigger AI review
+    review_result, review_error = trigger_ai_review(pr_number)
     
     if review_error:
         post_github_comment(pr_number, f"❌ **Review failed:** {review_error}")
@@ -454,7 +454,7 @@ def handle_pr_review_trigger(pr_number, action):
         if merged:
             post_github_comment(
                 pr_number,
-                f"✅ **Auto-merged!** Grok score: {score}/100\n\n"
+                f"✅ **Auto-merged!** AI score: {score}/100\n\n"
                 f"Payment will be processed automatically after merge completes."
             )
             
@@ -612,7 +612,7 @@ Please update the PR description with your wallet address in this format:
         # No review found - post comment
         comment = f"""## ⚠️ No Review Found
 
-This PR was merged but no Grok review was found in our system.
+This PR was merged but no AI review was found in our system.
 
 If you believe this is a bounty PR, please contact an admin to manually process the payout.
 """
@@ -631,7 +631,7 @@ If you believe this is a bounty PR, please contact an admin to manually process 
         # Review failed - shouldn't have been merged
         comment = f"""## ⚠️ Review Did Not Pass
 
-This PR was merged but the Grok review score was {review_result.get('score')}/10 (requires ≥8).
+This PR was merged but the AI review score was {review_result.get('score')}/10 (requires ≥8).
 
 Payout has been flagged for manual admin review.
 """
