@@ -38,6 +38,14 @@
 ### Branch Cleanup
 - 23 orphan branches deleted from repo
 
+### Leaderboard/Stats Fix
+- **bridge_web.py**: `bounty-stats` endpoint now reads from `pr_payouts.json` (was reading wrong file)
+- **bridge_web.py**: Added `leaderboard` field with per-contributor aggregated totals
+- **api_webhooks.py**: Auto-payments now record to `pr_payouts.json` via `record_completed_payout()`
+- **api_webhooks.py**: Startup reconciliation backfills completed queue items into payout ledger
+- **api_webhooks.py**: `queue_payment()` now stores PR author for leaderboard attribution
+- Railway persistent volume at `/app/data` overrides git — reconciliation handles this automatically
+
 ## [February 5, 2026] - Full PR Automation System (VALIDATED)
 - **Action**: Complete autonomous PR review, merge, and payment pipeline
 - **Version**: v3.0.0 - Full Meta Loop
