@@ -126,7 +126,7 @@ from api_reputation import reputation_bp
 from api_tasks import tasks_bp
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
 from api_pr_review import pr_review_bp
-from api_webhooks import webhooks_bp
+from api_webhooks import webhooks_bp, process_payment_queue
 from api_wsi import wsi_bp
 app.register_blueprint(admin_bp)
 app.register_blueprint(bounties_bp)
@@ -172,6 +172,20 @@ def init_clients():
         claude_client = Anthropic(api_key=CLAUDE_API_KEY)
 
 init_clients()
+
+# Process any pending payments from queue (e.g., interrupted by deploy restart)
+import threading
+def _startup_payment_check():
+    """Process pending payments 15 seconds after startup to let app fully initialize."""
+    import time
+    time.sleep(15)
+    try:
+        process_payment_queue()
+    except Exception as e:
+        print(f"[STARTUP] Payment queue processing error: {e}", flush=True)
+
+threading.Thread(target=_startup_payment_check, daemon=True).start()
+print("[STARTUP] Payment queue check scheduled (15s delay)", flush=True)
 
 # =============================================================================
 # SCRAPER CONFIG (v0.1)
