@@ -4,7 +4,7 @@ Admin routes for managing bounty PR reviews.
 
 Requires env vars:
     ADMIN_PASSWORD - Dashboard login password
-    GROK_API_KEY - For PR reviews
+    AI_REVIEW_KEY - For PR reviews
     GITHUB_TOKEN - For GitHub API calls
 
 v2.0.0 Changes:
@@ -37,7 +37,7 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 # Config
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GROK_API_KEY = os.getenv("GROK_API_KEY", "")
+AI_API_KEY = os.getenv("AI_API_KEY", "")
 REPO = "WattCoin-Org/wattcoin"
 BOUNTY_WALLET_ADDRESS = os.getenv("BOUNTY_WALLET_ADDRESS", "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF")
 DATA_FILE = "/app/data/bounty_reviews.json"
@@ -371,13 +371,13 @@ def close_pr(pr_number):
         return False
 
 # =============================================================================
-# GROK REVIEW
+# AI REVIEW
 # =============================================================================
 
-def call_grok_review(pr_info):
-    """Send PR to Grok for review."""
-    if not GROK_API_KEY:
-        return {"error": "GROK_API_KEY not configured"}
+def call_ai_review(pr_info):
+    """Send PR to AI for review."""
+    if not AI_API_KEY:
+        return {"error": "AI_API_KEY not configured"}
     
     prompt = f"""You are a strict bounty reviewer for WattCoin agent-native OSS.
 Review this Pull Request for a bounty task.
@@ -416,7 +416,7 @@ Output in this exact format:
         resp = requests.post(
             "https://api.x.ai/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {GROK_API_KEY}",
+                "Authorization": f"Bearer {AI_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
@@ -436,9 +436,9 @@ Output in this exact format:
                 "timestamp": datetime.now().isoformat()
             }
         else:
-            return {"error": f"Grok API error: {resp.status_code}"}
+            return {"error": f"AI API error: {resp.status_code}"}
     except Exception as e:
-        return {"error": f"Grok request failed: {str(e)}"}
+        return {"error": f"AI request failed: {str(e)}"}
 
 # =============================================================================
 # HTML TEMPLATES
@@ -634,10 +634,10 @@ PR_DETAIL_TEMPLATE = """
         <div class="bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded mb-6">{{ error }}</div>
         {% endif %}
         
-        <!-- Grok Review Section -->
+        <!-- AI Review Section -->
         <div class="bg-gray-800 rounded-lg p-6 mb-6">
             <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                🤖 Grok Review
+                🤖 AI Review
                 {% if review %}
                 <span class="text-xs text-gray-500">{{ review.timestamp[:16] }}</span>
                 {% endif %}
@@ -648,12 +648,12 @@ PR_DETAIL_TEMPLATE = """
                 <pre class="whitespace-pre-wrap text-sm">{{ review.review }}</pre>
             </div>
             {% else %}
-            <p class="text-gray-500 mb-4">No Grok review yet.</p>
+            <p class="text-gray-500 mb-4">No AI review yet.</p>
             {% endif %}
             
             <form method="POST" action="{{ url_for('admin.trigger_review', pr_number=pr.number) }}">
                 <button type="submit" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded transition">
-                    {% if review %}🔄 Re-run Grok Review{% else %}🚀 Run Grok Review{% endif %}
+                    {% if review %}🔄 Re-run AI Review{% else %}🚀 Run AI Review{% endif %}
                 </button>
             </form>
         </div>
@@ -1363,7 +1363,7 @@ def dashboard():
 @admin_bp.route('/pr/<int:pr_number>')
 @login_required
 def pr_detail(pr_number):
-    """PR detail page with Grok review."""
+    """PR detail page with AI review."""
     pr = get_pr_detail(pr_number)
     if not pr:
         return redirect(url_for('admin.dashboard', error=f"PR #{pr_number} not found"))
@@ -1381,12 +1381,12 @@ def pr_detail(pr_number):
 @admin_bp.route('/pr/<int:pr_number>/review', methods=['POST'])
 @login_required
 def trigger_review(pr_number):
-    """Trigger Grok review for a PR."""
+    """Trigger AI review for a PR."""
     pr = get_pr_detail(pr_number)
     if not pr:
         return redirect(url_for('admin.dashboard', error=f"PR #{pr_number} not found"))
     
-    result = call_grok_review(pr)
+    result = call_ai_review(pr)
     
     if result.get("success"):
         data = load_data()
@@ -1397,7 +1397,7 @@ def trigger_review(pr_number):
             "author": pr["author"]
         }
         save_data(data)
-        return redirect(url_for('admin.pr_detail', pr_number=pr_number, message="Grok review completed"))
+        return redirect(url_for('admin.pr_detail', pr_number=pr_number, message="AI review completed"))
     else:
         return redirect(url_for('admin.pr_detail', pr_number=pr_number, error=result.get("error", "Review failed")))
 
@@ -1976,7 +1976,7 @@ SUBMISSIONS_HTML = """
                         <th class="text-left pb-2">Task</th>
                         <th class="text-left pb-2">Wallet</th>
                         <th class="text-right pb-2">Amount</th>
-                        <th class="text-left pb-2">Grok</th>
+                        <th class="text-left pb-2">AI Review</th>
                         <th class="text-left pb-2">Submitted</th>
                         <th class="text-right pb-2">Actions</th>
                     </tr>
@@ -2025,7 +2025,7 @@ SUBMISSIONS_HTML = """
                                 <summary class="cursor-pointer text-gray-400 hover:text-gray-200">View result</summary>
                                 <pre class="mt-2 p-2 bg-black rounded overflow-x-auto text-green-400">{{ sub.result | tojson(indent=2) }}</pre>
                                 {% if sub.grok_review and sub.grok_review.reason %}
-                                <p class="mt-2 text-gray-400"><strong>Grok:</strong> {{ sub.grok_review.reason }}</p>
+                                <p class="mt-2 text-gray-400"><strong>AI:</strong> {{ sub.grok_review.reason }}</p>
                                 {% endif %}
                             </details>
                         </td>
