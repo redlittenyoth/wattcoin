@@ -125,10 +125,10 @@ def build_contributor_list():
             "source": "merit_system"
         }
         
-        # Merge historical data if this user also has legacy records
+        # Reference historical data separately (don't add to total_watt_earned — score is merit-only)
         if username in HISTORICAL_DATA:
             hist = HISTORICAL_DATA[username]
-            entry["total_watt_earned"] += hist.get("total_watt_earned", 0)
+            entry["historical_watt"] = hist.get("total_watt_earned", 0)
             entry["historical_bounties"] = hist.get("bounties", [])
         
         result.append(entry)

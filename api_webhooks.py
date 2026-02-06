@@ -55,70 +55,84 @@ REPUTATION_FILE = f"{DATA_DIR}/contributor_reputation.json"
 # =============================================================================
 
 def load_reputation_data():
-    """Load full reputation data from persistent file. Auto-seeds if missing."""
+    """Load full reputation data from persistent file. Auto-seeds if missing. Always recalculates scores."""
+    data = None
     try:
         if os.path.exists(REPUTATION_FILE):
             with open(REPUTATION_FILE, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
     except (json.JSONDecodeError, Exception) as e:
         print(f"[REPUTATION] Error loading: {e}", flush=True)
     
-    # Auto-seed with known history if file doesn't exist
-    seed_data = {
-        "contributors": {
-            "divol89": {
-                "github": "divol89",
-                "score": -50,
-                "tier": "flagged",
-                "merged_prs": [79],
-                "rejected_prs": [72],
-                "reverted_prs": [79],
-                "total_watt_earned": 0,
-                "last_updated": "2026-02-06T13:20:00Z"
-            },
-            "SudarshanSuryaprakash": {
-                "github": "SudarshanSuryaprakash",
-                "score": 25,
-                "tier": "bronze",
-                "merged_prs": [70],
-                "rejected_prs": [],
-                "reverted_prs": [],
-                "total_watt_earned": 15000,
-                "last_updated": "2026-02-05T04:10:00Z"
-            },
-            "ohmygod20260203": {
-                "github": "ohmygod20260203",
-                "score": 10,
-                "tier": "bronze",
-                "merged_prs": [75],
-                "rejected_prs": [],
-                "reverted_prs": [],
-                "total_watt_earned": 0,
-                "last_updated": "2026-02-06T00:00:00Z"
-            },
-            "Rajkoli145": {
-                "github": "Rajkoli145",
-                "score": 0,
-                "tier": "new",
-                "merged_prs": [],
-                "rejected_prs": [],
-                "reverted_prs": [],
-                "total_watt_earned": 0,
-                "last_updated": "2026-02-06T00:00:00Z"
+    if not data or "contributors" not in data:
+        # Auto-seed with known history if file doesn't exist
+        data = {
+            "contributors": {
+                "divol89": {
+                    "github": "divol89",
+                    "score": 0,
+                    "tier": "new",
+                    "merged_prs": [79],
+                    "rejected_prs": [72],
+                    "reverted_prs": [79],
+                    "total_watt_earned": 0,
+                    "last_updated": "2026-02-06T13:20:00Z"
+                },
+                "SudarshanSuryaprakash": {
+                    "github": "SudarshanSuryaprakash",
+                    "score": 0,
+                    "tier": "new",
+                    "merged_prs": [70],
+                    "rejected_prs": [],
+                    "reverted_prs": [],
+                    "total_watt_earned": 15000,
+                    "last_updated": "2026-02-05T04:10:00Z"
+                },
+                "ohmygod20260203": {
+                    "github": "ohmygod20260203",
+                    "score": 0,
+                    "tier": "new",
+                    "merged_prs": [75],
+                    "rejected_prs": [],
+                    "reverted_prs": [],
+                    "total_watt_earned": 0,
+                    "last_updated": "2026-02-06T00:00:00Z"
+                },
+                "Rajkoli145": {
+                    "github": "Rajkoli145",
+                    "score": 0,
+                    "tier": "new",
+                    "merged_prs": [],
+                    "rejected_prs": [],
+                    "reverted_prs": [],
+                    "total_watt_earned": 0,
+                    "last_updated": "2026-02-06T00:00:00Z"
+                }
             }
         }
-    }
-    
-    # Save seed data to disk
-    try:
-        os.makedirs(os.path.dirname(REPUTATION_FILE), exist_ok=True)
-        with open(REPUTATION_FILE, 'w') as f:
-            json.dump(seed_data, f, indent=2)
         print("[REPUTATION] Auto-seeded reputation file with known contributor history", flush=True)
-    except Exception as e:
-        print(f"[REPUTATION] Failed to auto-seed: {e}", flush=True)
     
-    return seed_data
+    # Always recalculate scores from actual history to ensure formula consistency
+    dirty = False
+    for username, contributor in data.get("contributors", {}).items():
+        correct_score = calculate_score(contributor)
+        correct_tier = get_merit_tier(correct_score)
+        if contributor.get("score") != correct_score or contributor.get("tier") != correct_tier:
+            contributor["score"] = correct_score
+            contributor["tier"] = correct_tier
+            dirty = True
+    
+    # Save if anything was corrected
+    if dirty:
+        try:
+            os.makedirs(os.path.dirname(REPUTATION_FILE), exist_ok=True)
+            with open(REPUTATION_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+            print("[REPUTATION] Recalculated and saved corrected scores", flush=True)
+        except Exception as e:
+            print(f"[REPUTATION] Failed to save corrected scores: {e}", flush=True)
+    
+    return data
 
 def save_reputation_data(data):
     """Save full reputation data to persistent file."""
