@@ -835,6 +835,10 @@ def github_webhook():
         # Still return 200 to acknowledge webhook
         return jsonify({"message": "Payouts paused, no action taken"}), 200
     
+    # Track merge in reputation system (before bounty logic — ALL merges count)
+    pr_author = pr.get("user", {}).get("login", "unknown")
+    update_reputation(pr_author, "merge", pr_number, watt_earned=0)
+    
     # Extract wallet from PR body
     pr_body = pr.get("body", "")
     wallet, wallet_error = extract_wallet_from_pr_body(pr_body)
@@ -937,12 +941,11 @@ An admin will review and process the payout manually if applicable.
         return jsonify({"message": "No bounty amount found"}), 200
     
     # Execute payment automatically
-    pr_author = pr.get("user", {}).get("login", "unknown")
     post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
     
     queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
     
-    # Update contributor reputation on merge
+    # Update WATT earned in reputation (merge already tracked earlier, deduped by PR#)
     update_reputation(pr_author, "merge", pr_number, watt_earned=amount)
     
     # Payment queued - comment will be posted by process_payment_queue() after confirmation
