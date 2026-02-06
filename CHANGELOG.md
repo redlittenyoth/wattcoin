@@ -42,7 +42,7 @@
   
   **Next Milestone**: First autonomous agent payout (Clawbot)
   
-- **Requested by**: Chris + Grok strategic directive
+- **Requested by**: Team + Grok strategic directive
 
 ## [February 5, 2026] - Bounty Automation System
 - **Action**: Automated bounty payment system
@@ -58,7 +58,7 @@
   - Historical contributor preservation: aybanda, njg7194, SudarshanSuryaprakash
   - Fixed leaderboard to merge historical data with new dashboard payouts
   - No data loss - all past contributors maintained
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 5, 2026] - Path-Based Deploy Rules
 - **Action**: Railway deployment optimization
@@ -73,7 +73,7 @@
   - Include rules: 10 core backend files
   - Exclude rules: docs/**, *.md, tests/**, bounty/**, wattnode/**, tipping/**
 - **Impact**: Bounty PRs merged without triggering redeploy (unless they touch backend)
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 5, 2026] - WattNode GUI v2.0
 - **Action**: Major GUI upgrade with enhanced features
@@ -90,7 +90,7 @@
   - **Solana Updates**: Fixed transaction signing for modern solana-py/solders API
   - Updated to solders>=0.18.0 for proper signature handling
 - **Model Updates**: Switched to grok-code-fast-1 and grok-4-1-fast-reasoning
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 4, 2026] - Frontend SSR Migration (Next.js)
 - **Action**: Migrated wattcoin-web from Vite SPA to Next.js 14 App Router
@@ -111,7 +111,7 @@
   - No canonical URLs → duplicate content risk
   - OG/Twitter images used relative paths
   - No structured metadata per page
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 4, 2026] - Contributor Payout #4 (imonlyspace)
 - **Action**: Bounty payout for PR #26
@@ -124,7 +124,7 @@
 - **Leaderboard**: Updated data/reputation.json (commit 018de10)
   - 3 contributors, 4 bounties, 180K WATT distributed
   - imonlyspace: bronze tier (1 bounty, 10K WATT)
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - Docs & Skill Update
 - **Action**: ClawHub skill & README refresh
@@ -135,7 +135,7 @@
   - README.md: Added Agent Marketplace section, WattNode section, cleaner structure
   - All wallet addresses documented
   - API endpoints table updated
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Dashboard External Tasks monitoring
@@ -146,7 +146,7 @@
   - Displays total WATT posted and paid
   - Lists all externally posted tasks with status
   - Read-only monitoring (fully automated, no approval needed)
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: External task posting
@@ -161,7 +161,7 @@
   - `source` field distinguishes `github` vs `external` tasks
   - Auto-updates task status on successful completion
   - Full agent-to-agent marketplace enabled
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Network stats API endpoint
@@ -173,7 +173,7 @@
   - Total WATT paid out (nodes + tasks combined)
   - Used for /nodes page dashboard display
   - Useful for agents monitoring network health
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Bounties API extension
@@ -186,7 +186,7 @@
   - Summary stats: total_bounties, total_agent_tasks, total_watt
   - Agent tasks have stake_required=0 (no stake needed)
   - Response key changed: `bounties` → `items`
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Windows GUI release
@@ -201,7 +201,7 @@
   - Auto-save configuration
   - PyInstaller build script for .exe
   - Inno Setup installer script for Windows installer
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Auto-payout feature
@@ -213,7 +213,7 @@
   - Requires `TREASURY_WALLET_PRIVATE_KEY` env var
   - Response includes `payout_tx` on success or `payout_error` on failure
   - Job record stores `payout_status` and `payout_tx`
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: WattNode daemon release
@@ -230,7 +230,7 @@
   - CLI commands: register, run, status, earnings
   - Polling mode (no incoming ports needed)
   - Raspberry Pi + systemd service support
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Major feature release
@@ -251,7 +251,7 @@
     - `GET /api/v1/nodes/{id}` - Node stats (public)
   - Storage: data/nodes.json, data/node_jobs.json
   - Health endpoint now shows active_nodes count
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Feature release
@@ -263,7 +263,7 @@
   - Payment verification reused from LLM proxy
   - New unified pricing endpoint: `GET /api/v1/pricing`
   - OpenClaw skill updated: `watt_scrape()` auto-pays 100 WATT
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Dashboard update
@@ -276,7 +276,7 @@
   - Payout history with TX links to Solscan
   - Rejected submissions log
   - Expandable result viewer per submission
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 3, 2026] - [UTC]
 - **Action**: Feature release
@@ -291,7 +291,7 @@
   - Admin endpoints: /submissions, /approve, /reject
   - Storage: data/task_submissions.json
   - New env var: BOUNTY_WALLET_PRIVATE_KEY (for auto-payout)
-- **Requested by**: Chris - Issue #2
+- **Requested by**: Project Owner - Issue #2
 
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
@@ -303,7 +303,7 @@
   - Functions: watt_balance, watt_send, watt_query, watt_scrape, watt_tasks, watt_submit
   - Wallet handling via env var or JSON file
   - CLI support: `python wattcoin.py balance|tasks|info`
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
@@ -317,7 +317,7 @@
   - Extracts frequency (daily/weekly/monthly)
   - Filters: ?type=recurring, ?min_amount=1000
   - Not listed on website - API only for AI agents
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
@@ -331,7 +331,7 @@
   - Leaderboard fetches from Reputation API
   - Stats cards: Contributors, Bounties Paid, WATT Distributed
   - Tier badges and legend on Leaderboard page
-- **Requested by**: Chris - Issue #14 (Reputation system)
+- **Requested by**: Project Owner - Issue #14 (Reputation system)
 
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
@@ -346,7 +346,7 @@
   - Rate limiting: 20/wallet/day, 500 global/day
   - Usage logging with burn tracking (0.05%)
   - Error codes: tx_not_found, tx_too_old, invalid_amount, etc.
-- **Requested by**: Chris - Issue #13 (LLM proxy)
+- **Requested by**: Project Owner - Issue #13 (LLM proxy)
 
 ## [February 2, 2026] - [UTC]
 - **Action**: Feature release
@@ -366,50 +366,50 @@
     - Filters: ?tier=, ?status=, ?min_amount=
     - Includes claimed_by, deadline, description
     - Cached 5 min to avoid GitHub rate limits
-- **Requested by**: Chris - Issue #11 (API key auth for scraper)
+- **Requested by**: Project Owner - Issue #11 (API key auth for scraper)
 
 ## [February 1, 2026] - [UTC]
 - **Action**: Feature release  
 - **Version**: v1.2.0
 - **Files**: admin_blueprint.py
 - **Summary**: Connect Wallet for one-click Phantom payouts, Mark Paid button, bounty parsing from linked issues, TX signature recording
-- **Requested by**: Chris
+- **Requested by**: Project Owner
 
 ## [January 31, 2026] - [22:30 UTC]
 - **Action**: Created
 - **Files**: admin_blueprint.py, bridge_web.py (updated)
 - **Summary**: Bounty Admin Dashboard v1.0.0 (Phase 1). Flask blueprint with admin routes. Features: login auth (ADMIN_PASSWORD env var), open PR list from GitHub API, PR detail view, manual Grok review trigger, approve/merge + reject actions, payout queue. JSON storage in /app/data/ (requires Railway Volume for persistence). Version bump to bridge_web.py v1.2.0.
-- **Requested by**: Chris - per HANDOFF_Jan31_2026.md spec
+- **Requested by**: Project Owner - per HANDOFF_Jan31_2026.md spec
 
 ## [January 31, 2026] - [20:30 UTC]
 - **Action**: Created
 - **File**: docs/AGENT_OSS_FRAMEWORK.md
 - **Summary**: Agent-Native OSS Framework spec. First agent-built OSS project. Covers: 10% stake to claim, 5K WATT min balance, tiered bounties (5K-500K WATT), AI + human review pipeline, anti-sybil/spam protections, wallet architecture, CI/CD, launch plan. New public repo (wattcoin-oss) to be created separately from cb3tech. Parked for launch prep.
-- **Requested by**: Chris + Grok - "Built by agents, for agents" differentiator
+- **Requested by**: Team + Grok - "Built by agents, for agents" differentiator
 
 ## [January 31, 2026] - [19:45 UTC]
 - **Action**: Created
 - **File**: docs/AGENT_COMPUTE_SPEC.md
 - **Summary**: Agent Compute Services spec. WATT-metered services for AI agents. v0.1 Web Scraper (100-500 WATT/scrape), v0.2 Code Sandbox (300-1000 WATT/exec). Zero API cost = profitable day 1. LLM Proxy deferred until economics work (MC > $100K). Parked for later build.
-- **Requested by**: Chris + Grok - pivoted from Pi Logger to real agent utility
+- **Requested by**: Team + Grok - pivoted from Pi Logger to real agent utility
 
 ## [January 31, 2026] - [19:15 UTC]
 - **Action**: Created
 - **File**: docs/STAKING_DASHBOARD_SPEC.md
 - **Summary**: No-Code Staking Dashboard spec (Bubble.io). Design complete, parked for later build. Covers: 1K WATT min stake, flexible 7-day unstake delay, participation-based rebates (500-2000 WATT per verified action), priority task access. Manual verification v1.
-- **Requested by**: Chris + Grok - hashed out design, parked for later
+- **Requested by**: Team + Grok - hashed out design, parked for later
 
 ## [January 31, 2026] - [17:45 UTC]
 - **Action**: Created
 - **Files**: docs/MOLTBOOK_TIPPING_SPEC.md, tipping/tip_transfer.py, tipping/tip_tracker.json
 - **Summary**: Moltbook WATT Tipping System (Track A). Spec document + CLI tool for tracking tips and generating messages. Commands: add, claim, sent, list, validate. Ready for first tip to Metanomicus pending tip wallet creation.
-- **Requested by**: Chris + Grok consensus - immediate utility via agent tipping
+- **Requested by**: Team + Grok consensus - immediate utility via agent tipping
 
 ## [January 31, 2026] - [17:15 UTC]
 - **Action**: Created
 - **File**: docs/AI_VERIFICATION_SPEC.md
 - **Summary**: Technical specification for AI Verification Webhooks (Q2 2026 planned). Covers cost control (WATT fee burns, rate limiting, tiered verification), multi-oracle architecture (Grok/Claude/GPT), escrow integration, and security considerations. References WHITEPAPER.md and contracts/wattcoin/src/lib.rs.
-- **Requested by**: Chris - spec needed before implementation
+- **Requested by**: Project Owner - spec needed before implementation
 
 ## [January 31, 2026] - [16:45 UTC]
 - **Action**: Updated
