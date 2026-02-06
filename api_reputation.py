@@ -94,15 +94,8 @@ HISTORICAL_DATA = {
 # DATA LOADING
 # =============================================================================
 
-def load_reputation_data():
-    """Load merit system reputation data."""
-    try:
-        if os.path.exists(REPUTATION_FILE):
-            with open(REPUTATION_FILE, 'r') as f:
-                return json.load(f)
-    except (json.JSONDecodeError, Exception):
-        pass
-    return {"contributors": {}}
+# Import canonical load function from webhooks (has auto-seed + cleanup + recalculation)
+from api_webhooks import load_reputation_data
 
 def build_contributor_list():
     """Build combined list: merit system contributors + historical data."""
