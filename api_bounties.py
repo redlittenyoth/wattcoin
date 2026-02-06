@@ -277,6 +277,11 @@ def validate_api_key(api_key):
     """Validate API key and return key data or None."""
     if not api_key:
         return None
+    # Check env var key first (for agents/testing without admin dashboard)
+    env_key = os.getenv("PROPOSAL_API_KEY", "")
+    if env_key and api_key == env_key:
+        return {"owner_wallet": "env_proposal_key", "tier": "basic", "status": "active"}
+    # Then check stored keys
     data = load_api_keys()
     key_data = data.get("keys", {}).get(api_key)
     if key_data and key_data.get("status") == "active":
