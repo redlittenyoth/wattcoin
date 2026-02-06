@@ -21,6 +21,8 @@ import os
 import json
 import hmac
 import hashlib
+import uuid
+import time
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -805,6 +807,11 @@ def queue_payout(pr_number, wallet, amount, bounty_issue_id, review_data):
 # WEBHOOK HANDLER
 # =============================================================================
 
+def generate_request_id():
+    """Generate a short unique request ID for tracing webhook events."""
+    return uuid.uuid4().hex[:8]
+
+
 @webhooks_bp.route('/webhooks/github', methods=['POST'])
 def github_webhook():
     """
@@ -813,6 +820,10 @@ def github_webhook():
     Expected events:
     - pull_request (closed + merged)
     """
+    request_id = generate_request_id()
+    start_time = time.time()
+    print(f"[WEBHOOK:{request_id}] Incoming webhook from {request.remote_addr}", flush=True)
+
     # Verify signature if secret is configured
     if GITHUB_WEBHOOK_SECRET:
         signature = request.headers.get('X-Hub-Signature-256', '')
@@ -820,9 +831,12 @@ def github_webhook():
         
         if not verify_github_signature(payload_body, signature, GITHUB_WEBHOOK_SECRET):
             log_security_event("webhook_invalid_signature", {
+                "request_id": request_id,
                 "ip": request.remote_addr,
                 "headers": dict(request.headers)
             })
+            elapsed = time.time() - start_time
+            print(f"[WEBHOOK:{request_id}] Rejected invalid signature in {elapsed:.2f}s", flush=True)
             return jsonify({"error": "Invalid signature"}), 403
     
     # Parse event
@@ -830,33 +844,69 @@ def github_webhook():
     payload = request.get_json()
     
     if not payload:
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Rejected empty payload in {elapsed:.2f}s", flush=True)
         return jsonify({"error": "No payload"}), 400
+
+    # Validate payload structure for pull_request events
+    if event_type == 'pull_request':
+        if 'pull_request' not in payload:
+            elapsed = time.time() - start_time
+            print(f"[WEBHOOK:{request_id}] Malformed payload: missing pull_request key in {elapsed:.2f}s", flush=True)
+            log_security_event("webhook_malformed_payload", {
+                "request_id": request_id,
+                "event_type": event_type,
+                "reason": "missing pull_request key"
+            })
+            return jsonify({"error": "Malformed payload: missing pull_request"}), 400
+
+        if not payload.get("pull_request", {}).get("number"):
+            elapsed = time.time() - start_time
+            print(f"[WEBHOOK:{request_id}] Malformed payload: missing PR number in {elapsed:.2f}s", flush=True)
+            log_security_event("webhook_malformed_payload", {
+                "request_id": request_id,
+                "event_type": event_type,
+                "reason": "missing PR number"
+            })
+            return jsonify({"error": "Malformed payload: missing PR number"}), 400
     
     # Only handle pull_request events
     if event_type != 'pull_request':
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Ignoring event type: {event_type} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": f"Ignoring event type: {event_type}"}), 200
     
     action = payload.get("action")
     pr = payload.get("pull_request", {})
     pr_number = pr.get("number")
     merged = pr.get("merged", False)
+    pr_author = pr.get("user", {}).get("login", "unknown")
+    print(f"[WEBHOOK:{request_id}] PR #{pr_number} action={action} merged={merged} author={pr_author}", flush=True)
     
     # Handle PR opened or synchronized (updated) - trigger auto-review
     if action in ["opened", "synchronize"]:
-        return handle_pr_review_trigger(pr_number, action)
+        print(f"[WEBHOOK:{request_id}] Triggering AI review for PR #{pr_number}", flush=True)
+        result = handle_pr_review_trigger(pr_number, action)
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Completed in {elapsed:.2f}s", flush=True)
+        return result
     
     # Only process merge events below this point
     if action == "closed" and not merged:
         # PR closed without merge — record rejection for merit system
-        pr_author = pr.get("user", {}).get("login", "unknown")
         update_reputation(pr_author, "reject", pr_number)
         log_security_event("pr_rejected", {
+            "request_id": request_id,
             "pr_number": pr_number,
             "author": pr_author
         })
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] PR #{pr_number} rejected, recorded in {elapsed:.2f}s", flush=True)
         return jsonify({"message": f"PR #{pr_number} closed without merge — rejection recorded"}), 200
     
     if action != "closed" or not merged:
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Ignoring action={action} merged={merged} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": f"Ignoring action: {action}, merged: {merged}"}), 200
     
     # Check emergency pause
@@ -871,7 +921,6 @@ def github_webhook():
         return jsonify({"message": "Payouts paused, no action taken"}), 200
     
     # Track merge in reputation system (before bounty logic — ALL merges count)
-    pr_author = pr.get("user", {}).get("login", "unknown")
     update_reputation(pr_author, "merge", pr_number, watt_earned=0)
     
     # Extract wallet from PR body
@@ -903,6 +952,8 @@ Please update the PR description with your wallet address in this format:
             fields={"PR": f"#{pr_number}", "Author": pr.get("user", {}).get("login", "unknown"), "Error": str(wallet_error)[:200]}
         )
         
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] Wallet extraction failed for PR #{pr_number} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": "Wallet not found in PR"}), 200
     
     # Find review record
@@ -919,10 +970,13 @@ If you believe this is a bounty PR, please contact an admin to manually process 
         post_github_comment(pr_number, comment)
         
         log_security_event("payout_no_review", {
+            "request_id": request_id,
             "pr_number": pr_number,
             "wallet": wallet
         })
         
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] No review found for PR #{pr_number} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": "No review found"}), 200
     
     # Check if review passed
@@ -974,11 +1028,14 @@ An admin will review and process the payout manually if applicable.
         post_github_comment(pr_number, comment)
         
         log_security_event("payout_no_amount", {
+            "request_id": request_id,
             "pr_number": pr_number,
             "wallet": wallet,
             "bounty_issue_id": bounty_issue_id
         })
         
+        elapsed = time.time() - start_time
+        print(f"[WEBHOOK:{request_id}] No bounty amount for PR #{pr_number} in {elapsed:.2f}s", flush=True)
         return jsonify({"message": "No bounty amount found"}), 200
     
     # Execute payment automatically
@@ -991,12 +1048,16 @@ An admin will review and process the payout manually if applicable.
     
     # Payment queued - comment will be posted by process_payment_queue() after confirmation
     log_security_event("payment_queued", {
+        "request_id": request_id,
         "pr_number": pr_number,
         "wallet": wallet,
         "amount": amount,
         "bounty_issue_id": bounty_issue_id
     })
     
+    elapsed = time.time() - start_time
+    print(f"[WEBHOOK:{request_id}] Payment queued for PR #{pr_number} ({amount:,} WATT) in {elapsed:.2f}s", flush=True)
+
     return jsonify({
         "message": "Payment queued for processing",
         "amount": amount,
