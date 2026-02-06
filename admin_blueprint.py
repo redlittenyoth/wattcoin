@@ -2243,12 +2243,14 @@ def process_payment_queue():
         pr_number = payment["pr_number"]
         wallet = payment["wallet"]
         amount = payment["amount"]
+        bounty_issue_id = payment.get("bounty_issue_id")
+        review_score = payment.get("review_score")
         
         # Import execute_auto_payment from api_webhooks
         from api_webhooks import execute_auto_payment
         
         # Execute payment
-        tx_signature, error = execute_auto_payment(pr_number, wallet, amount)
+        tx_signature, error = execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_score)
         
         if tx_signature:
             payment["status"] = "completed"
@@ -2291,3 +2293,4 @@ def reject_submission(sub_id):
             return redirect(url_for('admin.submissions', message=f"Submission {sub_id[:12]}... rejected"))
     
     return redirect(url_for('admin.submissions', error="Submission not found"))
+
