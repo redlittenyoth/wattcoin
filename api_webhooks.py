@@ -114,7 +114,17 @@ def load_reputation_data():
     
     # Always recalculate scores from actual history to ensure formula consistency
     dirty = False
-    for username, contributor in data.get("contributors", {}).items():
+    
+    # One-time cleanup: remove test accounts (merit system v1 testing, Feb 6 2026)
+    _CLEANUP_USERS = ["WattCoin-Org"]
+    contributors = data.get("contributors", {})
+    for cleanup_user in _CLEANUP_USERS:
+        if cleanup_user in contributors:
+            del contributors[cleanup_user]
+            dirty = True
+            print(f"[REPUTATION] Cleaned test data for {cleanup_user}", flush=True)
+    
+    for username, contributor in contributors.items():
         correct_score = calculate_score(contributor)
         correct_tier = get_merit_tier(correct_score)
         if contributor.get("score") != correct_score or contributor.get("tier") != correct_tier:
