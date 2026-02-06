@@ -1,3 +1,46 @@
+## [February 6, 2026] - AI Review System Fix + Payment Queue Processor
+
+### Grok→AI Rename (Phase 2 Complete)
+- **Files**: api_pr_review.py, pr_security.py, bridge_web.py
+- `GROK_API_KEY` → `AI_API_KEY` env var across all files
+- `grok_client` → `ai_client`, all function/variable renames
+- UI labels "Grok" → "AI" throughout dashboard and bridge
+- Model strings preserved for backward compatibility (`grok-code-fast-1`, `grok-3`)
+- Health check response: `grok` → `ai` field
+- bridge_web.py version: v2.2.0
+
+### Review System Fixes
+- **api_pr_review.py**: Fixed broken auto-review (400 errors from missing env var)
+- **pr_security.py**: Wallet validation no longer blocks review — wallet only required for payment
+- **api_webhooks.py**: Score display corrected from `/100` to `/10`
+
+### Payment Queue Processor (NEW)
+- **api_webhooks.py**: Added `process_payment_queue()` and `check_payment_already_sent()`
+- **bridge_web.py**: Startup hook processes pending payments 15s after deploy
+- On-chain safety: queries bounty wallet TXs for PR memo before retrying — prevents double payments
+- Handles deploy restart gracefully — queued payments survive server restart
+- Posts confirmation comment with Solscan link on success
+
+### Structured Error Codes (Bounty #73)
+- **api_error_codes.py** (NEW): Centralized `ErrorCodes` class with WATT-prefixed constants
+- **api_nodes.py**: All 21 error responses now include `error_code` field
+- Agents can programmatically handle failures via `error_code` instead of string parsing
+
+### PR Template Update
+- **.github/PULL_REQUEST_TEMPLATE.md**: Wallet field moved to top with prominent warning
+- "Grok" → "AI" reference updated
+
+### Health Check Endpoint (Bounty #67)
+- **api_nodes.py**: Added `GET /health` — returns status, uptime, active_jobs, version
+- Merged via full autonomous cycle (PR #77, AI score 8/10)
+
+### Bounty Activity
+- PR #75 merged (get_watt_price helper, 5K WATT, payment pending wallet)
+- PR #72 rejected (malicious code removal attempt by divol89)
+- PR #77 merged (health check, Clawbot, #67 closed)
+- PR #78 merged (error codes, #73 closed, 5K WATT auto-paid ✅)
+- First successful auto-payment via queue processor: TX cgaVcBrC...
+
 ## [February 5, 2026] - Full PR Automation System (VALIDATED)
 - **Action**: Complete autonomous PR review, merge, and payment pipeline
 - **Version**: v3.0.0 - Full Meta Loop
