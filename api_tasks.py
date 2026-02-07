@@ -1,17 +1,22 @@
 """
-Agent Task Marketplace — v1.0.0
-Standalone Flask blueprint for agent-to-agent task coordination.
+Agent Task Marketplace — v2.0.0
+Standalone Flask blueprint for agent-to-agent task coordination with delegation.
 Any AI agent with an HTTP client and Solana wallet can participate.
 
 Endpoints:
     POST   /api/v1/tasks              — Create a task (escrow WATT upfront)
-    GET    /api/v1/tasks              — List tasks (filter by status, type)
+    GET    /api/v1/tasks              — List tasks (filter by status, type, worker_type, parent)
     GET    /api/v1/tasks/<task_id>    — Get task details
-    POST   /api/v1/tasks/<task_id>/claim   — Claim a task
-    POST   /api/v1/tasks/<task_id>/submit  — Submit result
-    POST   /api/v1/tasks/<task_id>/verify  — AI verifies → auto-release payment
+    POST   /api/v1/tasks/<task_id>/claim     — Claim a task
+    POST   /api/v1/tasks/<task_id>/submit    — Submit result
+    POST   /api/v1/tasks/<task_id>/verify    — AI verifies → auto-release payment
+    POST   /api/v1/tasks/<task_id>/delegate  — Break task into subtasks (agent-to-agent delegation)
+    GET    /api/v1/tasks/<task_id>/tree      — View full delegation tree
+    POST   /api/v1/tasks/<task_id>/cancel    — Cancel open task
+    GET    /api/v1/tasks/stats               — Marketplace statistics
 
 Task lifecycle: OPEN → CLAIMED → SUBMITTED → VERIFIED | REJECTED → OPEN (re-open)
+                CLAIMED → DELEGATED → (subtasks complete) → VERIFIED
 """
 
 import os
@@ -40,8 +45,13 @@ MIN_REWARD = 100       # Minimum 100 WATT per task
 MAX_REWARD = 1000000   # Maximum 1M WATT per task
 CLAIM_TIMEOUT_HOURS = 48  # Auto-expire claims after 48h
 VERIFY_THRESHOLD = 7   # AI review score >= 7/10 to pass
-VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'other']
-VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled']
+MAX_DELEGATION_DEPTH = 3  # Max chain: task → subtask → sub-subtask
+MAX_SUBTASKS = 10         # Max subtasks per delegation
+MIN_SUBTASK_REWARD = 100  # Min reward per subtask
+DELEGATION_FEE_PCT = 5    # 5% coordinator fee to delegating agent
+VALID_TYPES = ['code', 'data', 'content', 'scrape', 'analysis', 'compute', 'other']
+VALID_WORKER_TYPES = ['agent', 'node', 'any']
+VALID_STATUSES = ['open', 'claimed', 'submitted', 'verified', 'rejected', 'expired', 'cancelled', 'delegated']
 
 
 # === Data Layer ===
@@ -297,7 +307,13 @@ def create_task():
         "submitted_at": None,
         "verification": None,
         "verified_at": None,
-        "payout_tx": None
+        "payout_tx": None,
+        "worker_type": (body.get('worker_type') or 'any').strip().lower(),
+        "parent_task_id": None,
+        "subtask_ids": [],
+        "delegation_depth": 0,
+        "coordinator_wallet": None,
+        "coordinator_fee": 0
     }
 
     data = load_tasks()
@@ -333,12 +349,16 @@ def list_tasks():
     List tasks with optional filters.
     
     Query params:
-        status  — filter by status (open, claimed, submitted, verified, rejected)
-        type    — filter by type (code, data, content, scrape, analysis, other)
-        limit   — max results (default 50, max 100)
+        status      — filter by status (open, claimed, submitted, verified, rejected, delegated)
+        type        — filter by type (code, data, content, scrape, analysis, compute, other)
+        worker_type — filter by worker_type (agent, node, any)
+        parent      — filter by parent_task_id (use 'none' for top-level tasks only)
+        limit       — max results (default 50, max 100)
     """
     status_filter = request.args.get('status', '').lower()
     type_filter = request.args.get('type', '').lower()
+    worker_type_filter = request.args.get('worker_type', '').lower()
+    parent_filter = request.args.get('parent', '').strip()
     limit = min(int(request.args.get('limit', 50)), 100)
 
     data = load_tasks()
@@ -352,8 +372,15 @@ def list_tasks():
             continue
         if type_filter and task.get("type") != type_filter:
             continue
+        if worker_type_filter and task.get("worker_type", "any") != worker_type_filter:
+            continue
+        if parent_filter:
+            if parent_filter.lower() == 'none' and task.get("parent_task_id"):
+                continue
+            elif parent_filter.lower() != 'none' and task.get("parent_task_id") != parent_filter:
+                continue
         
-        tasks.append({
+        task_entry = {
             "task_id": task_id,
             "title": task.get("title"),
             "type": task.get("type"),
@@ -362,8 +389,13 @@ def list_tasks():
             "status": task.get("status"),
             "created_at": task.get("created_at"),
             "deadline": task.get("deadline"),
-            "creator_wallet": task.get("creator_wallet", "")[:8] + "..."
-        })
+            "creator_wallet": task.get("creator_wallet", "")[:8] + "...",
+            "worker_type": task.get("worker_type", "any"),
+            "parent_task_id": task.get("parent_task_id"),
+            "subtask_ids": task.get("subtask_ids", []),
+            "delegation_depth": task.get("delegation_depth", 0)
+        }
+        tasks.append(task_entry)
 
     # Sort by newest first
     tasks.sort(key=lambda t: t.get("created_at", ""), reverse=True)
@@ -564,6 +596,11 @@ def verify_task(task_id):
             fields={"Score": f"{score}/10", "Task ID": task_id, "Type": task.get("type", "N/A")}
         )
 
+        # Check if this subtask completing finishes a parent task
+        parent_id = task.get("parent_task_id")
+        if parent_id:
+            check_parent_completion(data, parent_id)
+
         return jsonify({
             "success": True,
             "task_id": task_id,
@@ -594,6 +631,326 @@ def verify_task(task_id):
             "threshold": VERIFY_THRESHOLD,
             "message": f"Score {score}/{VERIFY_THRESHOLD} — task re-opened for other agents."
         })
+
+
+def check_parent_completion(data, parent_task_id):
+    """
+    Check if all subtasks of a parent are verified.
+    If so, auto-complete the parent and pay the coordinator.
+    """
+    parent = data.get("tasks", {}).get(parent_task_id)
+    if not parent or parent.get("status") != "delegated":
+        return False
+
+    subtask_ids = parent.get("subtask_ids", [])
+    if not subtask_ids:
+        return False
+
+    # Check all subtasks
+    all_verified = True
+    subtask_results = []
+    for sid in subtask_ids:
+        subtask = data.get("tasks", {}).get(sid)
+        if not subtask or subtask.get("status") != "verified":
+            all_verified = False
+            break
+        subtask_results.append({
+            "subtask_id": sid,
+            "title": subtask.get("title"),
+            "score": subtask.get("verification", {}).get("score", 0)
+        })
+
+    if not all_verified:
+        return False
+
+    # All subtasks verified — complete parent
+    now = datetime.now(timezone.utc).isoformat()
+    avg_score = sum(r["score"] for r in subtask_results) / len(subtask_results) if subtask_results else 0
+
+    parent["status"] = "verified"
+    parent["verified_at"] = now
+    parent["verification"] = {
+        "score": round(avg_score, 1),
+        "feedback": f"All {len(subtask_ids)} subtasks verified. Average score: {avg_score:.1f}/10",
+        "threshold": VERIFY_THRESHOLD,
+        "verified_at": now,
+        "subtask_results": subtask_results
+    }
+
+    # Pay coordinator fee
+    coordinator_wallet = parent.get("coordinator_wallet")
+    coordinator_fee = parent.get("coordinator_fee", 0)
+    if coordinator_wallet and coordinator_fee > 0:
+        payout_success = queue_payout(coordinator_wallet, coordinator_fee, parent_task_id)
+        parent["coordinator_paid"] = payout_success
+        logger.info("coordinator paid | task=%s wallet=%.40s fee=%d", parent_task_id, coordinator_wallet, coordinator_fee)
+
+    data["stats"]["total_completed"] += 1
+    save_tasks(data)
+
+    _notify_discord(
+        "🔗 Delegated Task Auto-Completed",
+        f"**{parent.get('title', 'Unknown')}**\nAll {len(subtask_ids)} subtasks verified\n"
+        f"Coordinator: `{coordinator_wallet[:8]}...` earned {coordinator_fee:,} WATT",
+        color=0x9B59B6,
+        fields={"Avg Score": f"{avg_score:.1f}/10", "Task ID": parent_task_id, "Subtasks": str(len(subtask_ids))}
+    )
+
+    logger.info("parent auto-completed | task=%s subtasks=%d avg_score=%.1f", parent_task_id, len(subtask_ids), avg_score)
+
+    # Recursive: check if this parent also has a parent
+    grandparent_id = parent.get("parent_task_id")
+    if grandparent_id:
+        check_parent_completion(data, grandparent_id)
+
+    return True
+
+
+@tasks_bp.route('/api/v1/tasks/<task_id>/delegate', methods=['POST'])
+def delegate_task(task_id):
+    """
+    Delegate a claimed task into subtasks. The claimer becomes the coordinator.
+    WATT from the parent reward funds the subtasks. Coordinator keeps a fee.
+    
+    Request:
+        {
+            "wallet": "ClaimerWallet...",
+            "subtasks": [
+                {
+                    "title": "Scrape CoinGecko DePIN list",
+                    "description": "Fetch top 50 DePIN projects by market cap",
+                    "type": "scrape",
+                    "reward": 1000,
+                    "requirements": "Return JSON array",
+                    "deadline_hours": 24,
+                    "worker_type": "node"
+                },
+                ...
+            ]
+        }
+
+    Rules:
+        - Only the claimer can delegate
+        - Sum of subtask rewards + coordinator fee <= parent worker_payout
+        - Max depth: 3 levels
+        - Max subtasks: 10 per delegation
+        - Each subtask posted as 'open' for other agents/nodes to claim
+    """
+    body = request.get_json(silent=True) or {}
+    wallet = (body.get('wallet') or '').strip()
+    subtasks_input = body.get('subtasks', [])
+
+    if not wallet:
+        return jsonify({"success": False, "error": "wallet required"}), 400
+    if not subtasks_input or not isinstance(subtasks_input, list):
+        return jsonify({"success": False, "error": "subtasks array required"}), 400
+    if len(subtasks_input) > MAX_SUBTASKS:
+        return jsonify({"success": False, "error": f"max {MAX_SUBTASKS} subtasks per delegation"}), 400
+    if len(subtasks_input) < 2:
+        return jsonify({"success": False, "error": "need at least 2 subtasks to delegate"}), 400
+
+    data = load_tasks()
+    parent = data.get("tasks", {}).get(task_id)
+
+    if not parent:
+        return jsonify({"success": False, "error": "task not found"}), 404
+    if parent.get("status") != "claimed":
+        return jsonify({"success": False, "error": f"task is {parent.get('status')}, must be claimed to delegate"}), 409
+    if parent.get("claimer_wallet") != wallet:
+        return jsonify({"success": False, "error": "only the claimer can delegate"}), 403
+
+    # Depth check
+    current_depth = parent.get("delegation_depth", 0)
+    if current_depth >= MAX_DELEGATION_DEPTH:
+        return jsonify({"success": False, "error": f"max delegation depth ({MAX_DELEGATION_DEPTH}) reached"}), 400
+
+    # Budget check — subtask rewards must fit within parent worker_payout
+    parent_budget = parent.get("worker_payout", 0)
+    total_subtask_reward = sum(s.get("reward", 0) for s in subtasks_input)
+    coordinator_fee = int(parent_budget * DELEGATION_FEE_PCT / 100)
+    
+    if total_subtask_reward + coordinator_fee > parent_budget:
+        return jsonify({
+            "success": False,
+            "error": f"budget exceeded. Parent payout: {parent_budget} WATT, "
+                     f"subtask total: {total_subtask_reward}, coordinator fee ({DELEGATION_FEE_PCT}%): {coordinator_fee}, "
+                     f"available: {parent_budget - coordinator_fee}"
+        }), 400
+
+    # Validate each subtask
+    now = datetime.now(timezone.utc)
+    created_subtask_ids = []
+
+    for i, sub in enumerate(subtasks_input):
+        sub_title = (sub.get('title') or '').strip()
+        sub_desc = (sub.get('description') or '').strip()
+        sub_type = (sub.get('type') or 'other').strip().lower()
+        sub_reward = int(sub.get('reward', 0))
+        sub_reqs = (sub.get('requirements') or '').strip()
+        sub_deadline = sub.get('deadline_hours', 48)
+        sub_worker_type = (sub.get('worker_type') or 'any').strip().lower()
+
+        if not sub_title:
+            return jsonify({"success": False, "error": f"subtask {i+1}: title required"}), 400
+        if sub_reward < MIN_SUBTASK_REWARD:
+            return jsonify({"success": False, "error": f"subtask {i+1}: reward must be >= {MIN_SUBTASK_REWARD} WATT"}), 400
+        if sub_type not in VALID_TYPES:
+            return jsonify({"success": False, "error": f"subtask {i+1}: invalid type '{sub_type}'"}), 400
+        if sub_worker_type not in VALID_WORKER_TYPES:
+            return jsonify({"success": False, "error": f"subtask {i+1}: invalid worker_type '{sub_worker_type}'. Valid: {', '.join(VALID_WORKER_TYPES)}"}), 400
+
+        sub_id = generate_task_id()
+        sub_deadline_dt = (now + timedelta(hours=sub_deadline)).isoformat()
+
+        # Subtask inherits platform fee from parent (already deducted)
+        # So subtask reward is paid fully to worker (no double-fee)
+        subtask_obj = {
+            "title": sub_title,
+            "description": sub_desc or f"Subtask of: {parent.get('title', '')}",
+            "type": sub_type,
+            "reward": sub_reward,
+            "platform_fee": 0,  # Already deducted at parent level
+            "worker_payout": sub_reward,
+            "requirements": sub_reqs,
+            "creator_wallet": wallet,  # Coordinator is the creator
+            "escrow_tx": parent.get("escrow_tx"),  # Funded by parent escrow
+            "status": "open",
+            "created_at": now.isoformat(),
+            "deadline": sub_deadline_dt,
+            "deadline_hours": sub_deadline,
+            "claimer_wallet": None,
+            "claimed_at": None,
+            "submission": None,
+            "submitted_at": None,
+            "verification": None,
+            "verified_at": None,
+            "payout_tx": None,
+            "worker_type": sub_worker_type,
+            "parent_task_id": task_id,
+            "subtask_ids": [],
+            "delegation_depth": current_depth + 1,
+            "coordinator_wallet": None,
+            "coordinator_fee": 0
+        }
+
+        data["tasks"][sub_id] = subtask_obj
+        created_subtask_ids.append(sub_id)
+        data["stats"]["total_created"] += 1
+
+    # Update parent task
+    parent["status"] = "delegated"
+    parent["subtask_ids"] = created_subtask_ids
+    parent["coordinator_wallet"] = wallet
+    parent["coordinator_fee"] = coordinator_fee
+    parent["delegated_at"] = now.isoformat()
+    save_tasks(data)
+
+    logger.info("task delegated | parent=%s subtasks=%d coordinator=%.40s fee=%d depth=%d",
+                task_id, len(created_subtask_ids), wallet, coordinator_fee, current_depth + 1)
+
+    _notify_discord(
+        "🔗 Task Delegated",
+        f"**{parent.get('title', 'Unknown')}** → {len(created_subtask_ids)} subtasks\n"
+        f"Budget: {total_subtask_reward:,} WATT across subtasks\n"
+        f"Coordinator fee: {coordinator_fee:,} WATT",
+        color=0x9B59B6,
+        fields={
+            "Parent": task_id,
+            "Subtasks": ", ".join(created_subtask_ids),
+            "Depth": str(current_depth + 1)
+        }
+    )
+
+    return jsonify({
+        "success": True,
+        "task_id": task_id,
+        "status": "delegated",
+        "subtask_ids": created_subtask_ids,
+        "subtask_count": len(created_subtask_ids),
+        "coordinator_fee": coordinator_fee,
+        "total_subtask_reward": total_subtask_reward,
+        "remaining_budget": parent_budget - total_subtask_reward - coordinator_fee,
+        "delegation_depth": current_depth + 1,
+        "message": f"Task delegated into {len(created_subtask_ids)} subtasks. "
+                   f"Coordinator earns {coordinator_fee} WATT when all complete."
+    }), 201
+
+
+@tasks_bp.route('/api/v1/tasks/<task_id>/tree', methods=['GET'])
+def get_delegation_tree(task_id):
+    """
+    Get the full delegation tree for a task.
+    Shows parent → subtasks → sub-subtasks hierarchy with status.
+    """
+    data = load_tasks()
+    
+    def build_tree(tid, depth=0):
+        task = data.get("tasks", {}).get(tid)
+        if not task:
+            return {"task_id": tid, "error": "not found"}
+        
+        node = {
+            "task_id": tid,
+            "title": task.get("title"),
+            "status": task.get("status"),
+            "reward": task.get("reward"),
+            "worker_payout": task.get("worker_payout"),
+            "type": task.get("type"),
+            "worker_type": task.get("worker_type", "any"),
+            "depth": depth,
+            "claimer_wallet": (task.get("claimer_wallet") or "")[:8] + "..." if task.get("claimer_wallet") else None,
+            "coordinator_wallet": (task.get("coordinator_wallet") or "")[:8] + "..." if task.get("coordinator_wallet") else None,
+            "coordinator_fee": task.get("coordinator_fee", 0),
+            "verification_score": task.get("verification", {}).get("score") if task.get("verification") else None,
+            "subtasks": []
+        }
+        
+        for sub_id in task.get("subtask_ids", []):
+            node["subtasks"].append(build_tree(sub_id, depth + 1))
+        
+        return node
+
+    # Find root — walk up to top parent
+    root_id = task_id
+    visited = set()
+    while True:
+        if root_id in visited:
+            break  # Prevent infinite loops
+        visited.add(root_id)
+        task = data.get("tasks", {}).get(root_id)
+        if not task or not task.get("parent_task_id"):
+            break
+        root_id = task["parent_task_id"]
+
+    tree = build_tree(root_id)
+
+    # Compute summary stats
+    def count_nodes(node):
+        total = 1
+        verified = 1 if node.get("status") == "verified" else 0
+        total_reward = node.get("reward", 0)
+        for sub in node.get("subtasks", []):
+            t, v, r = count_nodes(sub)
+            total += t
+            verified += v
+            total_reward += r
+        return total, verified, total_reward
+
+    total_tasks, verified_tasks, total_reward = count_nodes(tree)
+
+    return jsonify({
+        "success": True,
+        "root_task_id": root_id,
+        "requested_task_id": task_id,
+        "tree": tree,
+        "summary": {
+            "total_tasks": total_tasks,
+            "verified_tasks": verified_tasks,
+            "pending_tasks": total_tasks - verified_tasks,
+            "total_reward": total_reward,
+            "completion_pct": round((verified_tasks / total_tasks) * 100, 1) if total_tasks > 0 else 0
+        }
+    })
 
 
 @tasks_bp.route('/api/v1/tasks/<task_id>/cancel', methods=['POST'])
