@@ -13,7 +13,7 @@ WattAgent tips quality Moltbook comments with WATT, proving agent-to-agent payme
 ### Flow
 ```
 1. Quality comment posted on WattCoin thread
-2. Chris approves tip (v0.1 manual)
+2. Project Owner approves tip (v0.1 manual)
 3. WattAgent replies: "⚡ Tipped 500 WATT! Reply with Solana address to claim."
 4. User replies with address
 5. SPL transfer executed from tip wallet
@@ -105,7 +105,7 @@ This tip expired after 7 days unclaimed. Tips must be claimed within one week.
 
 ---
 
-## 6. Commands (For Chris)
+## 6. Commands (For Admin)
 
 ### Approve Tip
 ```
