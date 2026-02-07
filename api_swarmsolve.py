@@ -81,11 +81,16 @@ def get_escrow_wallet():
 def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
     """
     Send WATT from escrow wallet to recipient with optional memo.
+    Auto-creates recipient ATA if it doesn't exist.
+    Uses same proven pattern as bounty payment system.
     Returns transaction signature.
     """
+    from spl.token.instructions import (
+        get_associated_token_address, transfer_checked,
+        TransferCheckedParams, create_associated_token_account
+    )
+
     print(f"[ESCROW] Sending {amount:,} WATT to {recipient[:8]}...", flush=True)
-    if memo:
-        print(f"[ESCROW] Memo: {memo}", flush=True)
 
     wallet = get_escrow_wallet()
     from_pubkey = wallet.pubkey()
@@ -98,54 +103,77 @@ def send_watt_from_escrow(recipient: str, amount: int, memo: str = None) -> str:
     client = Client(SOLANA_RPC)
     mint = Pubkey.from_string(WATT_MINT)
 
-    from_ata = get_associated_token_address(
-        from_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
-    )
-    to_ata = get_associated_token_address(
-        to_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
+    # Look up sender ATA via RPC
+    sender_resp = requests.post(SOLANA_RPC, json={
+        "jsonrpc": "2.0", "id": 1,
+        "method": "getTokenAccountsByOwner",
+        "params": [str(from_pubkey), {"mint": WATT_MINT}, {"encoding": "jsonParsed"}]
+    }, timeout=10).json()
+
+    if "result" in sender_resp and sender_resp["result"]["value"]:
+        sender_ata = Pubkey.from_string(sender_resp["result"]["value"][0]["pubkey"])
+    else:
+        raise RuntimeError("Escrow wallet has no WATT token account!")
+
+    # Look up recipient ATA — auto-create if missing
+    create_ata_ix = None
+    recip_resp = requests.post(SOLANA_RPC, json={
+        "jsonrpc": "2.0", "id": 1,
+        "method": "getTokenAccountsByOwner",
+        "params": [recipient, {"mint": WATT_MINT}, {"encoding": "jsonParsed"}]
+    }, timeout=10).json()
+
+    if "result" in recip_resp and recip_resp["result"]["value"]:
+        recipient_ata = Pubkey.from_string(recip_resp["result"]["value"][0]["pubkey"])
+        print(f"[ESCROW] Found recipient ATA: {str(recipient_ata)[:8]}...", flush=True)
+    else:
+        print(f"[ESCROW] No WATT account for recipient. Creating ATA...", flush=True)
+        recipient_ata = get_associated_token_address(
+            to_pubkey, mint, token_program_id=TOKEN_2022_PROGRAM_ID
+        )
+        create_ata_ix = create_associated_token_account(
+            payer=from_pubkey,
+            owner=to_pubkey,
+            mint=mint,
+            token_program_id=TOKEN_2022_PROGRAM_ID
+        )
+
+    # Build transfer instruction (TransferChecked for Token-2022)
+    amount_raw = int(amount * (10 ** WATT_DECIMALS))
+    transfer_ix = transfer_checked(
+        TransferCheckedParams(
+            program_id=TOKEN_2022_PROGRAM_ID,
+            source=sender_ata,
+            mint=mint,
+            dest=recipient_ata,
+            owner=from_pubkey,
+            amount=amount_raw,
+            decimals=WATT_DECIMALS
+        )
     )
 
-    # Build TransferChecked instruction (Token-2022 requires mint in accounts)
-    amount_raw = amount * (10 ** WATT_DECIMALS)
-    data = bytes([12]) + struct.pack("<Q", amount_raw) + bytes([WATT_DECIMALS])
-
-    transfer_ix = Instruction(
-        program_id=TOKEN_2022_PROGRAM_ID,
-        accounts=[
-            AccountMeta(pubkey=from_ata, is_signer=False, is_writable=True),
-            AccountMeta(pubkey=mint, is_signer=False, is_writable=False),
-            AccountMeta(pubkey=to_ata, is_signer=False, is_writable=True),
-            AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
-        ],
-        data=data
-    )
-
+    # Build instructions: [create ATA if needed] + [memo if provided] + transfer
     instructions = []
+    if create_ata_ix:
+        instructions.append(create_ata_ix)
 
     if memo:
         memo_program = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
         memo_ix = Instruction(
             program_id=memo_program,
-            accounts=[
-                AccountMeta(pubkey=from_pubkey, is_signer=True, is_writable=False),
-            ],
+            accounts=[],
             data=memo.encode('utf-8')
         )
         instructions.append(memo_ix)
 
     instructions.append(transfer_ix)
 
+    # Get blockhash, build message, sign, send
     blockhash_resp = client.get_latest_blockhash()
-    recent_blockhash = Hash.from_string(str(blockhash_resp.value.blockhash))
+    recent_blockhash = blockhash_resp.value.blockhash
 
-    msg = Message.new_with_blockhash(
-        instructions,
-        from_pubkey,
-        recent_blockhash
-    )
-
-    signature = wallet.sign_message(bytes(msg))
-    tx = Transaction.populate(msg, [signature])
+    msg = Message.new_with_blockhash(instructions, from_pubkey, recent_blockhash)
+    tx = Transaction([wallet], msg, recent_blockhash)
 
     result = client.send_transaction(tx)
 
