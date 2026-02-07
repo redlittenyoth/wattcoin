@@ -298,6 +298,77 @@ def github_headers():
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
     return headers
 
+def check_duplicate_bounty(pr_number):
+    """
+    Check if a PR references an already-closed, already-paid bounty issue.
+    Returns: (is_duplicate, issue_number, reason) or (False, None, None)
+    """
+    import re
+    import requests
+    
+    try:
+        # Get PR body to find linked issue
+        url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}"
+        resp = requests.get(url, headers=github_headers(), timeout=10)
+        if resp.status_code != 200:
+            return False, None, None
+        
+        pr_data = resp.json()
+        pr_body = pr_data.get("body", "") or ""
+        pr_branch = pr_data.get("head", {}).get("ref", "")
+        
+        # Extract issue number from body (Fixes #69, Closes #69, etc.)
+        issue_match = re.search(r'(?:fixes|closes|resolves)\s*#(\d+)', pr_body, re.IGNORECASE)
+        
+        # Also check branch name (bounty-69-xxx)
+        if not issue_match:
+            branch_match = re.search(r'bounty-(\d+)', pr_branch, re.IGNORECASE)
+            if branch_match:
+                issue_match = branch_match
+        
+        if not issue_match:
+            return False, None, None
+        
+        issue_number = int(issue_match.group(1))
+        
+        # Check if issue is closed
+        issue_url = f"https://api.github.com/repos/{REPO}/issues/{issue_number}"
+        issue_resp = requests.get(issue_url, headers=github_headers(), timeout=10)
+        if issue_resp.status_code != 200:
+            return False, None, None
+        
+        issue_data = issue_resp.json()
+        if issue_data.get("state") != "closed":
+            return False, None, None
+        
+        # Issue is closed — check if there's already a merged PR for it
+        # Search closed PRs referencing this issue
+        search_url = f"https://api.github.com/search/issues?q=repo:{REPO}+is:pr+is:merged+{issue_number}+in:body"
+        search_resp = requests.get(search_url, headers=github_headers(), timeout=10)
+        
+        if search_resp.status_code == 200:
+            results = search_resp.json().get("items", [])
+            merged_prs = [r for r in results if r.get("number") != pr_number]
+            
+            if merged_prs:
+                paid_pr = merged_prs[0]
+                reason = (
+                    f"Issue #{issue_number} is already closed and was completed by "
+                    f"PR #{paid_pr['number']} (merged {paid_pr.get('closed_at', 'previously')}). "
+                    f"Bounty already paid."
+                )
+                return True, issue_number, reason
+        
+        # Fallback: issue is closed but we couldn't confirm a merged PR
+        # Still flag it since the issue is closed
+        reason = f"Issue #{issue_number} is already closed. Bounty may have been paid."
+        return True, issue_number, reason
+        
+    except Exception as e:
+        print(f"[DUPLICATE-CHECK] Error checking PR #{pr_number}: {e}", flush=True)
+        return False, None, None
+
+
 def get_bounty_amount(issue_number):
     """
     Fetch bounty amount from issue title.
@@ -665,6 +736,55 @@ def handle_pr_review_trigger(pr_number, action):
         "pr_number": pr_number,
         "action": action
     })
+    
+    # === DUPLICATE BOUNTY GUARD ===
+    is_duplicate, issue_number, dup_reason = check_duplicate_bounty(pr_number)
+    if is_duplicate:
+        comment = (
+            f"❌ **PR Auto-Rejected — Duplicate Bounty Claim**\n\n"
+            f"{dup_reason}\n\n"
+            f"⚠️ **Notice:** Submitting PRs for already-closed and already-paid bounties "
+            f"will be rejected automatically. Repeat attempts may result in reputation penalties.\n\n"
+            f"Please check issue status before working. Open bounties: "
+            f"https://github.com/{REPO}/labels/bounty\n\n"
+            f"— WattCoin Automated Review"
+        )
+        post_github_comment(pr_number, comment)
+        
+        # Close the PR automatically
+        import requests as req
+        try:
+            close_url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}"
+            req.patch(close_url, headers=github_headers(), json={"state": "closed"}, timeout=10)
+        except:
+            pass
+        
+        # Get author for reputation hit
+        try:
+            pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
+                            headers=github_headers(), timeout=10)
+            pr_author = pr_resp.json().get("user", {}).get("login", "unknown") if pr_resp.status_code == 200 else "unknown"
+        except:
+            pr_author = "unknown"
+        
+        update_reputation(pr_author, "reject", pr_number)
+        
+        log_security_event("duplicate_bounty_rejected", {
+            "pr_number": pr_number,
+            "issue_number": issue_number,
+            "author": pr_author,
+            "reason": dup_reason
+        })
+        
+        notify_discord(
+            "🚫 Duplicate Bounty Rejected",
+            f"PR #{pr_number} tried to claim already-paid Issue #{issue_number}",
+            color=0xFF0000,
+            fields={"PR": f"#{pr_number}", "Issue": f"#{issue_number}", "Author": pr_author}
+        )
+        
+        print(f"[DUPLICATE-GUARD] PR #{pr_number} rejected — duplicate claim on Issue #{issue_number}", flush=True)
+        return jsonify({"message": "Duplicate bounty claim rejected", "issue": issue_number}), 200
     
     # Post initial comment
     post_github_comment(pr_number, "🤖 **AI review triggered...** Analyzing code changes...")
