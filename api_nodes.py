@@ -317,6 +317,18 @@ def register_node():
     
     save_nodes(data)
     
+    # Discord notification
+    try:
+        from api_webhooks import notify_discord
+        notify_discord(
+            "🖥️ New WattNode Online",
+            f"**{name}** joined the network",
+            color=0x00BFFF,
+            fields={"Node ID": node_id, "Capabilities": ", ".join(capabilities), "Stake": f"{stake_result.get('amount', STAKE_AMOUNT):,} WATT"}
+        )
+    except ImportError:
+        pass
+    
     return jsonify({
         "success": True,
         "node_id": node_id,
