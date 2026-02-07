@@ -661,16 +661,28 @@ def approve_solution(solution_id):
 
         print(f"[SWARMSOLVE] Approving {solution_id}: {winner_amount:,} to {winner_wallet[:8]}..., fee {fee_amount:,}", flush=True)
 
-        # Queue winner payment via existing payment system
-        from api_webhooks import queue_payment
-        queue_payment(
-            pr_number=pr_number,
-            wallet=winner_wallet,
-            amount=winner_amount,
-            bounty_issue_id=issue_number,
-            review_score=None,
-            author=author
-        )
+        # Queue winner payment via payment queue file
+        queue_file = "/app/data/payment_queue.json"
+        queue = []
+        if os.path.exists(queue_file):
+            try:
+                with open(queue_file, 'r') as f:
+                    queue = json.load(f)
+            except:
+                queue = []
+        queue.append({
+            "pr_number": pr_number,
+            "wallet": winner_wallet,
+            "amount": winner_amount,
+            "bounty_issue_id": issue_number,
+            "review_score": None,
+            "author": author,
+            "queued_at": datetime.utcnow().isoformat(),
+            "status": "pending"
+        })
+        with open(queue_file, 'w') as f:
+            json.dump(queue, f, indent=2)
+        print(f"[SWARMSOLVE] Payment queued: {winner_amount:,} WATT to {winner_wallet[:8]}...", flush=True)
 
         # TODO v2: Queue treasury fee payment separately
         # For now, fee stays in escrow wallet (manual treasury transfer)
@@ -745,15 +757,27 @@ def refund_solution(solution_id):
             return jsonify({"error": f"Solution is '{solution['status']}', cannot refund"}), 400
 
         # Queue refund to customer wallet
-        from api_webhooks import queue_payment
-        queue_payment(
-            pr_number=0,
-            wallet=solution["customer_wallet"],
-            amount=solution["budget_watt"],
-            bounty_issue_id=solution.get("github_issue"),
-            review_score=None,
-            author="swarmsolve-refund"
-        )
+        queue_file = "/app/data/payment_queue.json"
+        queue = []
+        if os.path.exists(queue_file):
+            try:
+                with open(queue_file, 'r') as f:
+                    queue = json.load(f)
+            except:
+                queue = []
+        queue.append({
+            "pr_number": 0,
+            "wallet": solution["customer_wallet"],
+            "amount": solution["budget_watt"],
+            "bounty_issue_id": solution.get("github_issue"),
+            "review_score": None,
+            "author": "swarmsolve-refund",
+            "queued_at": datetime.utcnow().isoformat(),
+            "status": "pending"
+        })
+        with open(queue_file, 'w') as f:
+            json.dump(queue, f, indent=2)
+        print(f"[SWARMSOLVE] Refund queued: {solution['budget_watt']:,} WATT to {solution['customer_wallet'][:8]}...", flush=True)
 
         solution["status"] = "refunded"
         solution["refunded_at"] = datetime.utcnow().isoformat()
