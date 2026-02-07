@@ -1346,7 +1346,7 @@ def health():
     active_nodes = len(get_active_nodes())
     return jsonify({
         'status': 'ok', 
-        'version': '3.0.0',
+        'version': '3.2.2',
         'ai': bool(ai_client), 
         'claude': bool(claude_client),
         'proxy': True,
@@ -1472,3 +1472,4 @@ def bounty_stats():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
