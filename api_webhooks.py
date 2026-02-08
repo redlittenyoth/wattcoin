@@ -552,6 +552,7 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
             return None, f"Invalid recipient wallet address: {e}"
         
         # Look up RECIPIENT's token account (auto-create if missing)
+        import requests
         print(f"[PAYMENT] Looking up recipient's WATT token account...", flush=True)
         create_ata_ix = None
         try:
