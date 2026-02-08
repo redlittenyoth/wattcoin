@@ -1241,8 +1241,9 @@ def github_webhook():
         issue = payload.get("issue", {})
         labels = [l.get("name", "").lower() for l in issue.get("labels", [])]
         
-        # Notify on bounty-labeled issues (opened or labeled)
-        if issue_action in ["opened", "labeled"] and "bounty" in labels:
+        # Notify on bounty-labeled issues (opened only — labeled causes duplicates)
+        # Skip [SOLUTION:] issues — SwarmSolve has its own notification system
+        if issue_action == "opened" and "bounty" in labels and not issue.get("title", "").startswith("[SOLUTION"):
             issue_title = issue.get("title", "Untitled")
             issue_number = issue.get("number")
             issue_body = issue.get("body", "") or ""
@@ -1800,6 +1801,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 
