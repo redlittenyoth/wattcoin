@@ -854,12 +854,99 @@ def submit_solution():
         return jsonify({"error": "Internal error"}), 500
 
 
+def auto_expire_solutions(solutions_data):
+    """
+    Auto-expire open solutions past their deadline.
+    Refunds escrowed WATT to customer wallet, closes GitHub issue, notifies Discord.
+    Runs lazily on list/get endpoints.
+    """
+    solutions = solutions_data.get("solutions", [])
+    now = datetime.utcnow()
+    expired_count = 0
+
+    for solution in solutions:
+        if solution.get("status") != "open":
+            continue
+
+        deadline_str = solution.get("deadline_date", "")
+        if not deadline_str:
+            continue
+
+        try:
+            deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+
+        if now < deadline_dt:
+            continue
+
+        # Past deadline — auto-refund
+        solution_id = solution["id"]
+        print(f"[SWARMSOLVE] Auto-expiring {solution_id} — deadline {deadline_str} passed", flush=True)
+
+        try:
+            refund_tx = send_watt_from_escrow(
+                solution["customer_wallet"], solution["budget_watt"],
+                memo=f"swarmsolve:expired:{solution_id}"
+            )
+
+            solution["status"] = "expired"
+            solution["refund_tx"] = refund_tx
+            solution["refunded_at"] = now.isoformat()
+            solution["expiration_note"] = f"Auto-expired: deadline {deadline_str} passed with no approved PR"
+            expired_count += 1
+
+            print(f"[SWARMSOLVE] Auto-refund sent: {solution['budget_watt']:,} WATT to {solution['customer_wallet'][:8]}... TX: {refund_tx[:12]}...", flush=True)
+
+            # GitHub comment + close
+            if solution.get("github_issue"):
+                refund_link = f"https://solscan.io/tx/{refund_tx}"
+                post_issue_comment(solution["github_issue"],
+                    f"## ⏰ Deadline Expired — Escrow Refunded\n\n"
+                    f"No approved solution by deadline ({deadline_str}). "
+                    f"{solution['budget_watt']:,} WATT returned to customer.\n"
+                    f"**TX:** [Solscan]({refund_link})"
+                )
+                close_github_issue(solution["github_issue"])
+
+            notify_discord(
+                "Solution Expired — Auto-Refund",
+                f"**{solution['title']}** — {solution['budget_watt']:,} WATT returned to customer",
+                color=0xFF6600,
+                fields={"Deadline": deadline_str, "TX": f"[Solscan](https://solscan.io/tx/{refund_tx})"}
+            )
+
+        except Exception as e:
+            print(f"[SWARMSOLVE] Auto-expire refund failed for {solution_id}: {e}", flush=True)
+            # Mark as expired but note the refund failure — admin can retry manually
+            solution["status"] = "expired"
+            solution["expiration_note"] = f"Auto-expired but refund FAILED: {e}"
+            expired_count += 1
+
+            notify_discord(
+                "⚠️ Auto-Expire Refund FAILED",
+                f"**{solution['title']}** — {solution['budget_watt']:,} WATT refund failed!",
+                color=0xFF0000,
+                fields={"Error": str(e)[:200], "Solution ID": solution_id}
+            )
+
+    if expired_count > 0:
+        save_solutions(solutions_data)
+        print(f"[SWARMSOLVE] Auto-expired {expired_count} solutions", flush=True)
+
+    return expired_count
+
+
 @swarmsolve_bp.route('/api/v1/solutions', methods=['GET'])
 def list_solutions():
-    """List solutions with optional ?status=open|approved|refunded filter."""
+    """List solutions with optional ?status=open|approved|refunded|expired filter."""
     try:
         status_filter = request.args.get("status", "").lower()
         solutions_data = load_solutions()
+
+        # Auto-expire past-deadline solutions
+        auto_expire_solutions(solutions_data)
+
         solutions = solutions_data.get("solutions", [])
 
         if status_filter:
