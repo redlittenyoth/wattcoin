@@ -1,12 +1,13 @@
 # Payment System v2.0 - On-chain memo support for bounty payments
 """
 WattCoin GitHub Webhook Handler
-POST /webhooks/github - Handle PR events with full automation
+POST /webhooks/github - Handle PR and Issue events with full automation
 
 Listens for:
-- pull_request (action: opened) → Auto-trigger AI review
+- pull_request (action: opened) → Auto-trigger AI review + Discord activity
 - pull_request (action: synchronize) → Auto-trigger AI review on updates
 - pull_request (action: closed + merged = true) → Auto-execute payment
+- issues (action: opened/labeled with 'bounty') → Discord activity notification
 
 Full Automation Flow:
 1. PR opened → AI reviews code automatically
@@ -80,6 +81,13 @@ def notify_discord(title, message, color=0xFF0000, fields=None):
         req.post(webhook_url, json={"embeds": [embed]}, timeout=5)
     except Exception as e:
         print(f"[DISCORD] Notification failed: {e}", flush=True)
+
+
+def truncate_wallet(wallet):
+    """Truncate wallet for public display: XXXX...XXXX"""
+    if not wallet or len(wallet) < 12:
+        return wallet or "unknown"
+    return f"{wallet[:4]}...{wallet[-4:]}"
 
 
 # =============================================================================
@@ -268,12 +276,26 @@ def update_reputation(github_username, event, pr_number, watt_earned=0):
             contributor["reverted_prs"].append(pr_number)
     
     # Recalculate
+    old_tier = contributor.get("tier", "new")
     contributor["score"] = calculate_score(contributor)
     contributor["tier"] = get_merit_tier(contributor["score"])
     contributor["last_updated"] = datetime.utcnow().isoformat() + "Z"
     
     data["contributors"] = contributors
     save_reputation_data(data)
+    
+    # Tier promotion notification
+    new_tier = contributor["tier"]
+    tier_order = ["new", "bronze", "silver", "gold"]
+    if new_tier in tier_order and old_tier in tier_order:
+        if tier_order.index(new_tier) > tier_order.index(old_tier):
+            tier_emoji = {"bronze": "🥉", "silver": "🥈", "gold": "🥇"}.get(new_tier, "⭐")
+            notify_discord(
+                f"{tier_emoji} Tier Promotion",
+                f"**@{github_username}** reached **{new_tier.title()}** tier!",
+                color=0x9B59B6,
+                fields={"Score": str(contributor["score"]), "Tier": new_tier.title()}
+            )
     
     print(f"[REPUTATION] Updated {github_username}: {event} PR#{pr_number} → score={contributor['score']} tier={contributor['tier']}", flush=True)
     return contributor
@@ -890,6 +912,15 @@ def handle_pr_review_trigger(pr_number, action):
     score = review_data.get("score", 0)
     passed = review_data.get("pass", False)
     
+    # Activity feed: AI review complete (score only, no details)
+    review_verdict = "PASS ✅" if passed else "FAIL ❌"
+    notify_discord(
+        "🤖 AI Review Complete",
+        f"PR #{pr_number} scored **{score}/10** — {review_verdict}",
+        color=0x00FF00 if passed else 0xFF0000,
+        fields={"PR": f"#{pr_number}", "Score": f"{score}/10", "Result": review_verdict}
+    )
+    
     # If review passed threshold, check merit system before merging
     if passed and score >= 7:  # Minimum possible threshold (gold tier)
         # pr_author already fetched above in ban gate
@@ -1067,7 +1098,39 @@ def github_webhook():
             })
             return jsonify({"error": "Malformed payload: missing PR number"}), 400
     
-    # Only handle pull_request events
+    # Handle issues events — bounty creation notifications
+    if event_type == 'issues':
+        issue_action = payload.get("action")
+        issue = payload.get("issue", {})
+        labels = [l.get("name", "").lower() for l in issue.get("labels", [])]
+        
+        # Notify on bounty-labeled issues (opened or labeled)
+        if issue_action in ["opened", "labeled"] and "bounty" in labels:
+            issue_title = issue.get("title", "Untitled")
+            issue_number = issue.get("number")
+            issue_body = issue.get("body", "") or ""
+            
+            # Try to extract WATT amount from body (common format: "XX,XXX WATT" or "XXXXX WATT")
+            import re
+            watt_match = re.search(r'([\d,]+)\s*WATT', issue_body, re.IGNORECASE)
+            watt_str = watt_match.group(1).replace(",", "") if watt_match else None
+            
+            fields = {"Issue": f"#{issue_number}"}
+            if watt_str and watt_str.isdigit():
+                fields["Bounty"] = f"{int(watt_str):,} WATT"
+            
+            notify_discord(
+                "📋 New Bounty Created",
+                f"**{issue_title[:120]}**\nhttps://github.com/{REPO}/issues/{issue_number}",
+                color=0xFFA500,
+                fields=fields
+            )
+            print(f"[WEBHOOK:{request_id}] Bounty created: Issue #{issue_number}", flush=True)
+        
+        elapsed = time.time() - start_time
+        return jsonify({"message": f"Issues event processed: {issue_action}"}), 200
+
+    # Only handle pull_request events below this point
     if event_type != 'pull_request':
         elapsed = time.time() - start_time
         print(f"[WEBHOOK:{request_id}] Ignoring event type: {event_type} in {elapsed:.2f}s", flush=True)
@@ -1082,6 +1145,15 @@ def github_webhook():
     
     # Handle PR opened or synchronized (updated) - trigger auto-review
     if action in ["opened", "synchronize"]:
+        # Activity feed: PR submitted (only on new PRs, not updates)
+        if action == "opened":
+            pr_title = pr.get("title", "Untitled")
+            notify_discord(
+                "🔄 PR Submitted",
+                f"PR #{pr_number} submitted by **@{pr_author}**\n`{pr_title[:100]}`",
+                color=0x3498DB,
+                fields={"PR": f"#{pr_number}", "Author": f"@{pr_author}"}
+            )
         print(f"[WEBHOOK:{request_id}] Triggering AI review for PR #{pr_number}", flush=True)
         result = handle_pr_review_trigger(pr_number, action)
         elapsed = time.time() - start_time
@@ -1240,6 +1312,15 @@ def github_webhook():
         post_github_comment(pr_number, f"🚀 **Processing payment...** {amount:,} WATT to `{wallet[:8]}...{wallet[-8:]}`")
 
         queue_payment(pr_number, wallet, amount, bounty_issue_id=bounty_issue_id, review_score=review_result.get("score"), author=pr_author)
+
+        # Activity feed: PR merged + payment queued
+        pr_title = pr.get("title", "Untitled")
+        notify_discord(
+            "✅ PR Merged — Payment Queued",
+            f"PR #{pr_number} merged | **{amount:,} WATT** queued for `{truncate_wallet(wallet)}`\n`{pr_title[:100]}`",
+            color=0x00FF00,
+            fields={"PR": f"#{pr_number}", "Author": f"@{pr_author}", "Amount": f"{amount:,} WATT", "Issue": f"#{bounty_issue_id}" if bounty_issue_id else "N/A"}
+        )
 
         # Update WATT earned in reputation (merge already tracked earlier, deduped by PR#)
         update_reputation(pr_author, "merge", pr_number, watt_earned=amount)
