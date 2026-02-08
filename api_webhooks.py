@@ -881,6 +881,12 @@ def handle_pr_review_trigger(pr_number, action):
         pr_data = {}
         pr_body = ""
     
+    # === SYSTEM ACCOUNT BYPASS ===
+    SYSTEM_ACCOUNTS = {"wattcoin-org"}
+    if pr_author.lower() in SYSTEM_ACCOUNTS:
+        print(f"[SYSTEM] PR #{pr_number} from system account @{pr_author} — skipping all gates", flush=True)
+        return jsonify({"message": "System account — gates bypassed", "author": pr_author}), 200
+    
     banned_users = load_banned_users()
     if pr_author.lower() in banned_users:
         comment = (
