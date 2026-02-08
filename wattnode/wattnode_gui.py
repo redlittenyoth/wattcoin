@@ -6,7 +6,7 @@ Earn WATT by running a light node + serving AI inference
 FEATURES:
 - Tabbed interface (Dashboard, Inference, Settings, History)
 - CPU allocation slider
-- WSI Inference tab: GPU detection, Petals install, serve toggle
+- WSI Inference tab: GPU detection, dependency install, serve toggle
 - Real-time earnings graph
 - Job history table
 - Wallet balance display
@@ -35,12 +35,12 @@ import multiprocessing
 from datetime import datetime, timedelta
 from collections import deque
 
-# Try to import Petals node service
+# Try to import node service
 try:
-    from services.petals_node import PetalsNodeService
-    HAS_PETALS_SERVICE = True
+    from services.node_service import NodeService
+    HAS_NODE_SERVICE = True
 except ImportError:
-    HAS_PETALS_SERVICE = False
+    HAS_NODE_SERVICE = False
 
 # Try to import matplotlib for graphs
 try:
@@ -108,8 +108,8 @@ class WattNodeGUI:
         self.max_cores = multiprocessing.cpu_count()
         self.allocated_cores = max(1, int(self.max_cores * self.cpu_allocation / 100))
         
-        # Inference / Petals
-        self.petals_service = None
+        # Inference / Node Service
+        self.node_service = None
         self.inference_enabled = False
         self.inference_status = "not_checked"  # not_checked, no_gpu, needs_install, ready, serving, error
         self.gpu_info = None
@@ -390,7 +390,7 @@ class WattNodeGUI:
     # =========================================================================
 
     def create_inference_tab(self):
-        """WSI Inference tab — GPU check, Petals install, serve toggle, live logs."""
+        """WSI Inference tab — GPU check, dependency install, serve toggle, live logs."""
         container = tk.Frame(self.inference_tab, bg=BG_DARK, padx=15, pady=15)
         container.pack(fill=tk.BOTH, expand=True)
 
@@ -437,14 +437,14 @@ class WattNodeGUI:
                 font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
         self.disk_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Petals row
-        petals_row = tk.Frame(status_frame, bg=BG_SURFACE)
-        petals_row.pack(fill=tk.X, pady=2)
-        tk.Label(petals_row, text="Petals:", font=("Segoe UI", 10), fg=TEXT_MUTED,
+        # Engine row
+        engine_row = tk.Frame(status_frame, bg=BG_SURFACE)
+        engine_row.pack(fill=tk.X, pady=2)
+        tk.Label(engine_row, text="Engine:", font=("Segoe UI", 10), fg=TEXT_MUTED,
                 bg=BG_SURFACE, width=12, anchor=tk.W).pack(side=tk.LEFT)
-        self.petals_status_label = tk.Label(petals_row, text="Not checked",
+        self.engine_status_label = tk.Label(engine_row, text="Not checked",
                 font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
-        self.petals_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.engine_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Check System button
         self.check_btn = tk.Button(status_frame, text="🔍  Check System",
@@ -533,20 +533,20 @@ class WattNodeGUI:
         self._log_inference("🔍 Checking system requirements...")
 
         def do_check():
-            svc = PetalsNodeService() if HAS_PETALS_SERVICE else None
+            svc = NodeService() if HAS_NODE_SERVICE else None
             if not svc:
                 self.root.after(0, lambda: self._system_check_done({
                     "overall": "error",
-                    "gpu": {"error": "PetalsNodeService not available"},
+                    "gpu": {"error": "NodeService not available"},
                     "ram": {"sufficient": False},
                     "disk": {"sufficient": False},
-                    "petals_installed": False,
+                    "engine_installed": False,
                     "torch_installed": {"installed": False}
                 }))
                 return
 
             report = svc.check_system()
-            self.petals_service = svc
+            self.node_service = svc
             self.root.after(0, lambda r=report: self._system_check_done(r))
 
         threading.Thread(target=do_check, daemon=True).start()
@@ -583,11 +583,11 @@ class WattNodeGUI:
         text = f"{'✅' if disk.get('sufficient') else '⚠️'} {free}GB free" + (" (need ≥20GB)" if not disk.get("sufficient") else "")
         self.disk_status_label.config(text=text, fg=color)
 
-        # Petals
-        installed = report.get("petals_installed", False)
+        # Engine
+        installed = report.get("engine_installed", False)
         color = ACCENT_GREEN if installed else TEXT_MUTED
         text = "✅ Installed" if installed else "Not installed"
-        self.petals_status_label.config(text=text, fg=color)
+        self.engine_status_label.config(text=text, fg=color)
 
         overall = report.get("overall", "unknown")
         self.inference_status = overall
@@ -598,10 +598,10 @@ class WattNodeGUI:
             self.install_btn.config(state=tk.DISABLED)
             self.serve_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
         elif overall == "needs_install":
-            self._log_inference("📦 GPU compatible. Install Petals dependencies to continue.")
+            self._log_inference("📦 GPU compatible. Install inference dependencies to continue.")
             self.install_info_label.config(
                 text="Your GPU is compatible! Install the AI inference libraries to enable serving.\n"
-                     "This will download ~3GB of AI frameworks (PyTorch, Petals, Transformers).\n"
+                     "This will download ~3GB of AI frameworks (inference engine + dependencies).\n"
                      "Model weights (~5GB) download separately on first serve.",
                 fg=TEXT_WHITE)
             self.install_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
@@ -615,8 +615,8 @@ class WattNodeGUI:
             self._log_inference(f"⚠️ System check result: {overall}")
 
     def run_install(self):
-        """Install Petals dependencies with progress feedback."""
-        if not self.petals_service:
+        """Install inference dependencies with progress feedback."""
+        if not self.node_service:
             return
 
         self.install_btn.config(state=tk.DISABLED, text="Installing...")
@@ -624,7 +624,7 @@ class WattNodeGUI:
         self.install_progress_label.pack(anchor=tk.W)
 
         self._log_inference("📦 Installing AI inference dependencies...")
-        self._log_inference("   This will install PyTorch, Transformers, and Petals (~3GB total).")
+        self._log_inference("   This will install inference engine and dependencies (~3GB total).")
         self._log_inference("   This is a one-time setup. Please be patient...")
 
         def do_install():
@@ -634,7 +634,7 @@ class WattNodeGUI:
                 self.root.after(0, lambda m=message: self.install_progress_label.config(text=m))
                 self._log_inference_safe(f"   [{step}/{total}] {message}")
 
-            result = self.petals_service.install(progress_callback=progress_cb)
+            result = self.node_service.install(progress_callback=progress_cb)
 
             if result["success"]:
                 self.root.after(0, self._install_done_success)
@@ -651,7 +651,7 @@ class WattNodeGUI:
         self.install_btn.config(text="✅ Installed", state=tk.DISABLED)
         self.install_progress.config(value=100)
         self.install_progress_label.config(text="Complete!")
-        self.petals_status_label.config(text="✅ Installed", fg=ACCENT_GREEN)
+        self.engine_status_label.config(text="✅ Installed", fg=ACCENT_GREEN)
         self.serve_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
         self.inference_status = "ready"
         self.install_info_label.config(text="All dependencies installed. Ready to serve!", fg=ACCENT_GREEN)
@@ -664,9 +664,9 @@ class WattNodeGUI:
 
     def toggle_inference(self):
         """Start or stop serving inference."""
-        if not self.petals_service:
+        if not self.node_service:
             # Initialize service with config
-            self.petals_service = PetalsNodeService({
+            self.node_service = NodeService({
                 "wallet": self.wallet,
                 "node_id": self.node_id,
                 "num_blocks": self.gpu_info.get("suggested_blocks") if self.gpu_info else None
@@ -678,7 +678,7 @@ class WattNodeGUI:
             self.start_inference()
 
     def start_inference(self):
-        """Start Petals server."""
+        """Start inference server."""
         if not self.wallet:
             messagebox.showwarning("Wallet Required",
                 "Please set your wallet address in the Settings tab before serving inference.")
@@ -688,18 +688,18 @@ class WattNodeGUI:
         self.serve_btn.config(state=tk.DISABLED, text="Starting...")
 
         # Wire up callbacks
-        self.petals_service.on_log = lambda line: self._log_inference_safe(f"   {line}")
-        self.petals_service.on_status_change = lambda s, m: self.root.after(0, lambda: self._inference_status_changed(s, m))
-        self.petals_service.on_error = lambda e: self.root.after(0, lambda: self._inference_error(e))
+        self.node_service.on_log = lambda line: self._log_inference_safe(f"   {line}")
+        self.node_service.on_status_change = lambda s, m: self.root.after(0, lambda: self._inference_status_changed(s, m))
+        self.node_service.on_error = lambda e: self.root.after(0, lambda: self._inference_error(e))
 
         # Configure
-        self.petals_service.wallet = self.wallet
-        self.petals_service.node_id = self.node_id
+        self.node_service.wallet = self.wallet
+        self.node_service.node_id = self.node_id
         if self.gpu_info:
-            self.petals_service.num_blocks = self.gpu_info.get("suggested_blocks")
+            self.node_service.num_blocks = self.gpu_info.get("suggested_blocks")
 
         def do_start():
-            result = self.petals_service.start_serving()
+            result = self.node_service.start_serving()
             if result.get("success"):
                 self.root.after(0, lambda: self._inference_started(result))
             else:
@@ -719,12 +719,12 @@ class WattNodeGUI:
             text=f"🟢 Starting... (PID: {result.get('pid', '?')})",
             fg=ACCENT_GREEN
         )
-        self._log_inference(f"✅ Petals server started (PID: {result.get('pid')})")
+        self._log_inference(f"✅ Inference server started (PID: {result.get('pid')})")
         self._log_inference("   Downloading model weights on first run (this may take several minutes)...")
         self._log_inference("   Once ready, your node will serve AI queries and earn WATT automatically.")
 
     def _inference_status_changed(self, status, message):
-        """Petals server reported a status change."""
+        """Inference server reported a status change."""
         if status == "serving":
             self.serve_status_label.config(text="🟢 Serving inference blocks", fg=ACCENT_GREEN)
             self._log_inference(f"🧠 {message}")
@@ -745,13 +745,13 @@ class WattNodeGUI:
         self.inference_enabled = False
 
     def stop_inference(self):
-        """Stop Petals server."""
+        """Stop inference server."""
         self._log_inference("🛑 Stopping inference server...")
         self.serve_btn.config(state=tk.DISABLED)
 
         def do_stop():
-            if self.petals_service:
-                self.petals_service.stop_serving()
+            if self.node_service:
+                self.node_service.stop_serving()
             self.root.after(0, self._inference_stopped)
 
         threading.Thread(target=do_stop, daemon=True).start()
