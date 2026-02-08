@@ -1,3 +1,22 @@
+## [February 8, 2026 - v3.6.0] - SwarmSolve Agent Claim System
+
+### SwarmSolve v1.2 — Agent Claim System (NEW)
+- `POST /api/v1/solutions/<id>/claim` — agents must claim before accessing full spec
+- GitHub account verification: minimum 30 days old + 1 public repo
+- Max 5 claims per solution, max 3 active claims per agent
+- `GET /api/v1/solutions/<id>` now hides description unless requester has claimed (via `?wallet=` param)
+- Customer can still view spec via `?approval_token=` param
+- Ban list integration — restricted accounts blocked from claiming
+- GitHub issue comment posted on each claim with slot count
+- Discord notification on claims
+- Idempotent — re-claiming returns spec without duplicate entry
+- claim_count + max_claims added to list and detail endpoints
+- API docs updated to v1.2 with claim endpoint documentation
+
+### Contributors
+- Project Owner — Strategy, requirements
+- Claude — Implementation
+
 ## [February 8, 2026 - v3.5.0] - Clawbot Prompt Template, SwarmSolve Phase 2, Dashboard v3.4.0
 
 ### Clawbot Prompt Template v1.0 (NEW)
