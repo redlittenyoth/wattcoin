@@ -166,8 +166,8 @@ def build_contributor_list():
 # =============================================================================
 
 TIER_INFO = {
-    "gold":    {"emoji": "🥇", "min_score": 90,  "auto_merge_min": 7, "payout_bonus": "+20%"},
-    "silver":  {"emoji": "🥈", "min_score": 50,  "auto_merge_min": 8, "payout_bonus": "+10%"},
+    "gold":    {"emoji": "🥇", "min_score": 90,  "auto_merge_min": 9, "payout_bonus": "+20%"},
+    "silver":  {"emoji": "🥈", "min_score": 50,  "auto_merge_min": 9, "payout_bonus": "+10%"},
     "bronze":  {"emoji": "🥉", "min_score": 1,   "auto_merge_min": 9, "payout_bonus": "standard"},
     "new":     {"emoji": "🆕", "min_score": 0,   "auto_merge_min": None, "payout_bonus": "standard"},
     "flagged": {"emoji": "🚫", "min_score": None, "auto_merge_min": None, "payout_bonus": "blocked"},
