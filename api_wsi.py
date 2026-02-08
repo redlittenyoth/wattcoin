@@ -34,9 +34,11 @@ WSI_GATEWAY_URL = os.getenv("WSI_GATEWAY_URL", "")  # e.g. http://seed-node-ip:8
 WSI_GATEWAY_TIMEOUT = int(os.getenv("WSI_GATEWAY_TIMEOUT", "120"))  # inference can be slow
 WSI_GATEWAY_KEY = os.getenv("WSI_GATEWAY_KEY", "")  # shared secret for node contribution reports
 
-# Access requirements
-MIN_WATT_BALANCE = 5000   # Hold 5K WATT to access
-DAILY_QUERY_LIMIT = 20    # Queries per 24h per wallet
+# Access requirements (configurable via env vars)
+MIN_WATT_BALANCE = int(os.environ.get('WSI_MIN_BALANCE', '5000'))   # Hold to access
+DAILY_QUERY_LIMIT = int(os.environ.get('WSI_DAILY_LIMIT', '20'))    # Per wallet per 24h
+HOURLY_LIMIT_WALLET = int(os.environ.get('WSI_HOURLY_LIMIT_WALLET', '10'))   # Per wallet per hour
+HOURLY_LIMIT_GLOBAL = int(os.environ.get('WSI_HOURLY_LIMIT_GLOBAL', '100'))  # All wallets per hour
 QUERY_COST_WATT = 0       # Phase 1: free queries for holders (burn/cost TBD)
 CACHE_TTL = 300            # 5 min balance cache
 
@@ -55,6 +57,57 @@ WSI_NODE_PAYOUT_PCT = int(os.environ.get('WSI_NODE_PAYOUT_PCT', '70'))  # % to n
 # =============================================================================
 
 _balance_cache = {}  # wallet -> (balance, expires_at)
+
+# =============================================================================
+# HOURLY RATE LIMITING (in-memory, resets on restart)
+# =============================================================================
+
+_hourly_queries_wallet = {}  # wallet -> [timestamp, timestamp, ...]
+_hourly_queries_global = []  # [timestamp, timestamp, ...]
+
+
+def _cleanup_hourly():
+    """Remove entries older than 1 hour."""
+    cutoff = time.time() - 3600
+    # Clean global
+    global _hourly_queries_global
+    _hourly_queries_global = [t for t in _hourly_queries_global if t > cutoff]
+    # Clean per-wallet
+    expired_wallets = []
+    for wallet, timestamps in _hourly_queries_wallet.items():
+        _hourly_queries_wallet[wallet] = [t for t in timestamps if t > cutoff]
+        if not _hourly_queries_wallet[wallet]:
+            expired_wallets.append(wallet)
+    for w in expired_wallets:
+        del _hourly_queries_wallet[w]
+
+
+def check_hourly_limits(wallet):
+    """
+    Check hourly rate limits (global and per-wallet).
+    Returns: (is_allowed, reason) — reason is None if allowed.
+    """
+    _cleanup_hourly()
+
+    # Global limit
+    if len(_hourly_queries_global) >= HOURLY_LIMIT_GLOBAL:
+        return False, f"Global hourly limit reached ({HOURLY_LIMIT_GLOBAL}/hr). Try again shortly."
+
+    # Per-wallet limit
+    wallet_count = len(_hourly_queries_wallet.get(wallet, []))
+    if wallet_count >= HOURLY_LIMIT_WALLET:
+        return False, f"Wallet hourly limit reached ({HOURLY_LIMIT_WALLET}/hr). Try again shortly."
+
+    return True, None
+
+
+def record_hourly_query(wallet):
+    """Record a query for hourly rate tracking."""
+    now = time.time()
+    _hourly_queries_global.append(now)
+    if wallet not in _hourly_queries_wallet:
+        _hourly_queries_wallet[wallet] = []
+    _hourly_queries_wallet[wallet].append(now)
 
 
 def get_watt_balance(wallet):
@@ -360,6 +413,14 @@ def wsi_query():
             "current_balance": balance
         }), 403
 
+    # Check hourly rate limits
+    hourly_allowed, hourly_reason = check_hourly_limits(wallet)
+    if not hourly_allowed:
+        return jsonify({
+            "success": False,
+            "error": hourly_reason
+        }), 429
+
     # Check daily limit
     is_allowed, used_count, limit = check_daily_limit(wallet)
     if not is_allowed:
@@ -388,6 +449,7 @@ def wsi_query():
 
     # Record usage
     query_id = record_query(wallet, prompt, response_text, actual_model, gateway_meta, latency_ms)
+    record_hourly_query(wallet)
 
     # Record node contributions from gateway response (if reported)
     for node_info in result.get("contributions", []):
@@ -458,6 +520,10 @@ def wsi_chat():
     if not is_allowed:
         return jsonify({"success": False, "error": "Daily limit exceeded"}), 429
 
+    hourly_allowed, hourly_reason = check_hourly_limits(wallet)
+    if not hourly_allowed:
+        return jsonify({"success": False, "error": hourly_reason}), 429
+
     start_time = time.time()
     result, error = query_gateway(message, max_tokens=2000)
     latency_ms = int((time.time() - start_time) * 1000)
@@ -467,6 +533,7 @@ def wsi_chat():
 
     response_text = result.get("response", "")
     record_query(wallet, message, response_text, result.get("model", ""), {}, latency_ms)
+    record_hourly_query(wallet)
 
     return jsonify({
         "success": True,
