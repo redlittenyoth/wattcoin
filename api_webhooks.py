@@ -1183,7 +1183,7 @@ def github_webhook():
             # Review failed - shouldn't have been merged
             comment = f"""## ⚠️ Review Did Not Pass
 
-    This PR was merged but the AI review score was {review_result.get('score')}/10 (requires ≥8).
+    This PR was merged but the AI review score was {review_result.get('score')}/10 (requires ≥9).
 
     Payout has been flagged for manual admin review.
     """
