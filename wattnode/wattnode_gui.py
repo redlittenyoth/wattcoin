@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-WattNode GUI v2.0 - Enhanced Windows Desktop Application
-Earn WATT by running a light node
+WattNode GUI v3.0 - Enhanced Windows Desktop Application
+Earn WATT by running a light node + serving AI inference
 
-NEW FEATURES:
-- Tabbed interface (Dashboard, Settings, History)
+FEATURES:
+- Tabbed interface (Dashboard, Inference, Settings, History)
 - CPU allocation slider
+- WSI Inference tab: GPU detection, Petals install, serve toggle
 - Real-time earnings graph
 - Job history table
 - Wallet balance display
@@ -34,6 +35,13 @@ import multiprocessing
 from datetime import datetime, timedelta
 from collections import deque
 
+# Try to import Petals node service
+try:
+    from services.petals_node import PetalsNodeService
+    HAS_PETALS_SERVICE = True
+except ImportError:
+    HAS_PETALS_SERVICE = False
+
 # Try to import matplotlib for graphs
 try:
     import matplotlib
@@ -54,6 +62,7 @@ TEXT_MUTED = "#888888"
 ACCENT_GREEN = "#39ff14"
 ACCENT_HOVER = "#32e512"
 ERROR_RED = "#ff4444"
+ACCENT_PURPLE = "#9b59b6"  # WSI / Inference accent
 
 # === CONFIG ===
 API_BASE = "https://wattcoin-production-81a7.up.railway.app"
@@ -66,7 +75,7 @@ MAX_HISTORY = 100  # Keep last 100 jobs
 class WattNodeGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("WattNode v2.0")
+        self.root.title("WattNode v3.0")
         self.root.geometry("700x650")
         self.root.configure(bg=BG_DARK)
         self.root.resizable(True, True)
@@ -98,6 +107,12 @@ class WattNodeGUI:
         self.cpu_allocation = 50  # Percentage
         self.max_cores = multiprocessing.cpu_count()
         self.allocated_cores = max(1, int(self.max_cores * self.cpu_allocation / 100))
+        
+        # Inference / Petals
+        self.petals_service = None
+        self.inference_enabled = False
+        self.inference_status = "not_checked"  # not_checked, no_gpu, needs_install, ready, serving, error
+        self.gpu_info = None
         
         # History tracking
         self.job_history = deque(maxlen=MAX_HISTORY)
@@ -232,15 +247,18 @@ class WattNodeGUI:
         
         # Create tabs
         self.dashboard_tab = tk.Frame(self.notebook, bg=BG_DARK)
+        self.inference_tab = tk.Frame(self.notebook, bg=BG_DARK)
         self.settings_tab = tk.Frame(self.notebook, bg=BG_DARK)
         self.history_tab = tk.Frame(self.notebook, bg=BG_DARK)
         
         self.notebook.add(self.dashboard_tab, text="  Dashboard  ")
+        self.notebook.add(self.inference_tab, text="  🧠 Inference  ")
         self.notebook.add(self.settings_tab, text="  Settings  ")
         self.notebook.add(self.history_tab, text="  History  ")
         
         # Build each tab
         self.create_dashboard_tab()
+        self.create_inference_tab()
         self.create_settings_tab()
         self.create_history_tab()
         
@@ -367,6 +385,405 @@ class WattNodeGUI:
         
         self.earnings_canvas.draw()
     
+    # =========================================================================
+    # INFERENCE TAB — WSI Distributed Inference
+    # =========================================================================
+
+    def create_inference_tab(self):
+        """WSI Inference tab — GPU check, Petals install, serve toggle, live logs."""
+        container = tk.Frame(self.inference_tab, bg=BG_DARK, padx=15, pady=15)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        # === HEADER ===
+        header = tk.Frame(container, bg=BG_SURFACE, padx=15, pady=12)
+        header.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(header, text="🧠 WSI — Serve AI Inference", font=("Segoe UI", 13, "bold"),
+                fg=ACCENT_PURPLE, bg=BG_SURFACE).pack(anchor=tk.W)
+        tk.Label(header, text="Earn WATT by hosting AI model layers on the distributed network",
+                font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_SURFACE).pack(anchor=tk.W, pady=(3, 0))
+
+        # === SYSTEM STATUS ===
+        status_frame = tk.Frame(container, bg=BG_SURFACE, padx=15, pady=12)
+        status_frame.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(status_frame, text="System Requirements", font=("Segoe UI", 11, "bold"),
+                fg=TEXT_WHITE, bg=BG_SURFACE).pack(anchor=tk.W, pady=(0, 8))
+
+        # GPU row
+        gpu_row = tk.Frame(status_frame, bg=BG_SURFACE)
+        gpu_row.pack(fill=tk.X, pady=2)
+        tk.Label(gpu_row, text="GPU:", font=("Segoe UI", 10), fg=TEXT_MUTED,
+                bg=BG_SURFACE, width=12, anchor=tk.W).pack(side=tk.LEFT)
+        self.gpu_status_label = tk.Label(gpu_row, text="Not checked",
+                font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
+        self.gpu_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # RAM row
+        ram_row = tk.Frame(status_frame, bg=BG_SURFACE)
+        ram_row.pack(fill=tk.X, pady=2)
+        tk.Label(ram_row, text="RAM:", font=("Segoe UI", 10), fg=TEXT_MUTED,
+                bg=BG_SURFACE, width=12, anchor=tk.W).pack(side=tk.LEFT)
+        self.ram_status_label = tk.Label(ram_row, text="Not checked",
+                font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
+        self.ram_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Disk row
+        disk_row = tk.Frame(status_frame, bg=BG_SURFACE)
+        disk_row.pack(fill=tk.X, pady=2)
+        tk.Label(disk_row, text="Disk:", font=("Segoe UI", 10), fg=TEXT_MUTED,
+                bg=BG_SURFACE, width=12, anchor=tk.W).pack(side=tk.LEFT)
+        self.disk_status_label = tk.Label(disk_row, text="Not checked",
+                font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
+        self.disk_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Petals row
+        petals_row = tk.Frame(status_frame, bg=BG_SURFACE)
+        petals_row.pack(fill=tk.X, pady=2)
+        tk.Label(petals_row, text="Petals:", font=("Segoe UI", 10), fg=TEXT_MUTED,
+                bg=BG_SURFACE, width=12, anchor=tk.W).pack(side=tk.LEFT)
+        self.petals_status_label = tk.Label(petals_row, text="Not checked",
+                font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE, anchor=tk.W)
+        self.petals_status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Check System button
+        self.check_btn = tk.Button(status_frame, text="🔍  Check System",
+                                    font=("Segoe UI", 10, "bold"),
+                                    bg=ACCENT_PURPLE, fg=TEXT_WHITE,
+                                    activebackground="#8e44ad",
+                                    relief=tk.FLAT, cursor="hand2",
+                                    command=self.run_system_check)
+        self.check_btn.pack(fill=tk.X, ipady=8, pady=(10, 0))
+
+        # === SETUP / INSTALL ===
+        self.install_frame = tk.Frame(container, bg=BG_SURFACE, padx=15, pady=12)
+        self.install_frame.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(self.install_frame, text="Setup", font=("Segoe UI", 11, "bold"),
+                fg=TEXT_WHITE, bg=BG_SURFACE).pack(anchor=tk.W, pady=(0, 5))
+
+        self.install_info_label = tk.Label(self.install_frame,
+                text="Run 'Check System' first to see what's needed.",
+                font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_SURFACE, wraplength=600,
+                justify=tk.LEFT)
+        self.install_info_label.pack(anchor=tk.W, pady=(0, 8))
+
+        # Progress bar (hidden until install starts)
+        self.install_progress = ttk.Progressbar(self.install_frame, mode='determinate')
+        self.install_progress_label = tk.Label(self.install_frame, text="",
+                font=("Segoe UI", 9), fg=ACCENT_GREEN, bg=BG_SURFACE)
+
+        self.install_btn = tk.Button(self.install_frame,
+                text="📦  Install AI Dependencies (~3GB)",
+                font=("Segoe UI", 10, "bold"),
+                bg="#2a2a2a", fg=TEXT_MUTED,
+                relief=tk.FLAT, cursor="hand2",
+                state=tk.DISABLED,
+                command=self.run_install)
+        self.install_btn.pack(fill=tk.X, ipady=8)
+
+        # === SERVE CONTROLS ===
+        serve_frame = tk.Frame(container, bg=BG_SURFACE, padx=15, pady=12)
+        serve_frame.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(serve_frame, text="Serve Inference", font=("Segoe UI", 11, "bold"),
+                fg=TEXT_WHITE, bg=BG_SURFACE).pack(anchor=tk.W, pady=(0, 5))
+
+        tk.Label(serve_frame,
+                text="When enabled, your GPU hosts AI model layers. You earn WATT for each query served.",
+                font=("Segoe UI", 9), fg=TEXT_MUTED, bg=BG_SURFACE, wraplength=600,
+                justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 8))
+
+        # Serve status
+        self.serve_status_label = tk.Label(serve_frame, text="⏹ Not serving",
+                font=("Segoe UI", 10), fg=TEXT_MUTED, bg=BG_SURFACE)
+        self.serve_status_label.pack(anchor=tk.W, pady=(0, 8))
+
+        self.serve_btn = tk.Button(serve_frame,
+                text="🚀  Start Serving Inference",
+                font=("Segoe UI", 10, "bold"),
+                bg="#2a2a2a", fg=TEXT_MUTED,
+                relief=tk.FLAT, cursor="hand2",
+                state=tk.DISABLED,
+                command=self.toggle_inference)
+        self.serve_btn.pack(fill=tk.X, ipady=8)
+
+        # === LIVE LOGS ===
+        log_frame = tk.Frame(container, bg=BG_SURFACE, padx=10, pady=10)
+        log_frame.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(log_frame, text="Activity Log", font=("Segoe UI", 10, "bold"),
+                fg=TEXT_WHITE, bg=BG_SURFACE).pack(anchor=tk.W, pady=(0, 5))
+
+        self.inference_log = tk.Text(log_frame, height=8,
+                bg=BG_DARK, fg=TEXT_MUTED,
+                font=("Consolas", 9),
+                relief=tk.FLAT, wrap=tk.WORD,
+                state=tk.DISABLED)
+        self.inference_log.pack(fill=tk.BOTH, expand=True)
+
+        # Scrollbar
+        scrollbar = tk.Scrollbar(self.inference_log, command=self.inference_log.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.inference_log.config(yscrollcommand=scrollbar.set)
+
+    def run_system_check(self):
+        """Run GPU/RAM/disk check in background thread."""
+        self.check_btn.config(state=tk.DISABLED, text="Checking...")
+        self._log_inference("🔍 Checking system requirements...")
+
+        def do_check():
+            svc = PetalsNodeService() if HAS_PETALS_SERVICE else None
+            if not svc:
+                self.root.after(0, lambda: self._system_check_done({
+                    "overall": "error",
+                    "gpu": {"error": "PetalsNodeService not available"},
+                    "ram": {"sufficient": False},
+                    "disk": {"sufficient": False},
+                    "petals_installed": False,
+                    "torch_installed": {"installed": False}
+                }))
+                return
+
+            report = svc.check_system()
+            self.petals_service = svc
+            self.root.after(0, lambda r=report: self._system_check_done(r))
+
+        threading.Thread(target=do_check, daemon=True).start()
+
+    def _system_check_done(self, report):
+        """Update UI with system check results."""
+        self.check_btn.config(state=tk.NORMAL, text="🔍  Check System")
+
+        # GPU
+        gpu = report.get("gpu", {})
+        if gpu.get("found"):
+            name = gpu.get("name", "Unknown")
+            vram = gpu.get("vram_gb", 0)
+            blocks = gpu.get("suggested_blocks", 0)
+            color = ACCENT_GREEN if gpu.get("compatible") else ERROR_RED
+            text = f"✅ {name} — {vram}GB VRAM — ~{blocks} blocks" if gpu.get("compatible") else f"⚠️ {name} — {vram}GB (need ≥6GB)"
+            self.gpu_info = gpu
+        else:
+            color = ERROR_RED
+            text = f"❌ No NVIDIA GPU found" + (f" ({gpu.get('error', '')})" if gpu.get('error') else "")
+        self.gpu_status_label.config(text=text, fg=color)
+
+        # RAM
+        ram = report.get("ram", {})
+        total = ram.get("total_gb", 0)
+        color = ACCENT_GREEN if ram.get("sufficient") else ERROR_RED
+        text = f"{'✅' if ram.get('sufficient') else '⚠️'} {total}GB total" + (" (need ≥12GB)" if not ram.get("sufficient") else "")
+        self.ram_status_label.config(text=text, fg=color)
+
+        # Disk
+        disk = report.get("disk", {})
+        free = disk.get("free_gb", 0)
+        color = ACCENT_GREEN if disk.get("sufficient") else ERROR_RED
+        text = f"{'✅' if disk.get('sufficient') else '⚠️'} {free}GB free" + (" (need ≥20GB)" if not disk.get("sufficient") else "")
+        self.disk_status_label.config(text=text, fg=color)
+
+        # Petals
+        installed = report.get("petals_installed", False)
+        color = ACCENT_GREEN if installed else TEXT_MUTED
+        text = "✅ Installed" if installed else "Not installed"
+        self.petals_status_label.config(text=text, fg=color)
+
+        overall = report.get("overall", "unknown")
+        self.inference_status = overall
+
+        if overall == "ready":
+            self._log_inference("✅ System ready! You can start serving inference.")
+            self.install_info_label.config(text="All dependencies installed. Ready to serve!", fg=ACCENT_GREEN)
+            self.install_btn.config(state=tk.DISABLED)
+            self.serve_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
+        elif overall == "needs_install":
+            self._log_inference("📦 GPU compatible. Install Petals dependencies to continue.")
+            self.install_info_label.config(
+                text="Your GPU is compatible! Install the AI inference libraries to enable serving.\n"
+                     "This will download ~3GB of AI frameworks (PyTorch, Petals, Transformers).\n"
+                     "Model weights (~5GB) download separately on first serve.",
+                fg=TEXT_WHITE)
+            self.install_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
+        elif overall == "no_gpu":
+            self._log_inference("❌ No compatible GPU found. Inference requires an NVIDIA GPU with ≥6GB VRAM.")
+            self.install_info_label.config(
+                text="Inference requires an NVIDIA GPU with ≥6GB VRAM.\n"
+                     "Your node can still earn WATT from scraping jobs on the Dashboard tab.",
+                fg=TEXT_MUTED)
+        else:
+            self._log_inference(f"⚠️ System check result: {overall}")
+
+    def run_install(self):
+        """Install Petals dependencies with progress feedback."""
+        if not self.petals_service:
+            return
+
+        self.install_btn.config(state=tk.DISABLED, text="Installing...")
+        self.install_progress.pack(fill=tk.X, pady=(5, 3))
+        self.install_progress_label.pack(anchor=tk.W)
+
+        self._log_inference("📦 Installing AI inference dependencies...")
+        self._log_inference("   This will install PyTorch, Transformers, and Petals (~3GB total).")
+        self._log_inference("   This is a one-time setup. Please be patient...")
+
+        def do_install():
+            def progress_cb(step, total, message):
+                pct = int(step / total * 100)
+                self.root.after(0, lambda: self.install_progress.config(value=pct))
+                self.root.after(0, lambda m=message: self.install_progress_label.config(text=m))
+                self._log_inference_safe(f"   [{step}/{total}] {message}")
+
+            result = self.petals_service.install(progress_callback=progress_cb)
+
+            if result["success"]:
+                self.root.after(0, self._install_done_success)
+            else:
+                failed = [r for r in result["results"] if not r["success"]]
+                msgs = "; ".join(f"{r['name']}: {r.get('error', '?')}" for r in failed)
+                self.root.after(0, lambda: self._install_done_fail(msgs))
+
+        threading.Thread(target=do_install, daemon=True).start()
+
+    def _install_done_success(self):
+        """Install completed successfully."""
+        self._log_inference("✅ All dependencies installed successfully!")
+        self.install_btn.config(text="✅ Installed", state=tk.DISABLED)
+        self.install_progress.config(value=100)
+        self.install_progress_label.config(text="Complete!")
+        self.petals_status_label.config(text="✅ Installed", fg=ACCENT_GREEN)
+        self.serve_btn.config(state=tk.NORMAL, bg=ACCENT_PURPLE, fg=TEXT_WHITE)
+        self.inference_status = "ready"
+        self.install_info_label.config(text="All dependencies installed. Ready to serve!", fg=ACCENT_GREEN)
+
+    def _install_done_fail(self, error_msg):
+        """Install failed."""
+        self._log_inference(f"❌ Installation failed: {error_msg}")
+        self.install_btn.config(text="📦  Retry Install", state=tk.NORMAL, bg=ACCENT_PURPLE)
+        self.install_progress_label.config(text=f"Failed: {error_msg[:80]}")
+
+    def toggle_inference(self):
+        """Start or stop serving inference."""
+        if not self.petals_service:
+            # Initialize service with config
+            self.petals_service = PetalsNodeService({
+                "wallet": self.wallet,
+                "node_id": self.node_id,
+                "num_blocks": self.gpu_info.get("suggested_blocks") if self.gpu_info else None
+            })
+
+        if self.inference_enabled:
+            self.stop_inference()
+        else:
+            self.start_inference()
+
+    def start_inference(self):
+        """Start Petals server."""
+        if not self.wallet:
+            messagebox.showwarning("Wallet Required",
+                "Please set your wallet address in the Settings tab before serving inference.")
+            return
+
+        self._log_inference("🚀 Starting inference server...")
+        self.serve_btn.config(state=tk.DISABLED, text="Starting...")
+
+        # Wire up callbacks
+        self.petals_service.on_log = lambda line: self._log_inference_safe(f"   {line}")
+        self.petals_service.on_status_change = lambda s, m: self.root.after(0, lambda: self._inference_status_changed(s, m))
+        self.petals_service.on_error = lambda e: self.root.after(0, lambda: self._inference_error(e))
+
+        # Configure
+        self.petals_service.wallet = self.wallet
+        self.petals_service.node_id = self.node_id
+        if self.gpu_info:
+            self.petals_service.num_blocks = self.gpu_info.get("suggested_blocks")
+
+        def do_start():
+            result = self.petals_service.start_serving()
+            if result.get("success"):
+                self.root.after(0, lambda: self._inference_started(result))
+            else:
+                self.root.after(0, lambda: self._inference_error(result.get("error", "Unknown error")))
+
+        threading.Thread(target=do_start, daemon=True).start()
+
+    def _inference_started(self, result):
+        """Server started successfully."""
+        self.inference_enabled = True
+        self.serve_btn.config(
+            text="🛑  Stop Serving",
+            state=tk.NORMAL,
+            bg=ERROR_RED, fg=TEXT_WHITE
+        )
+        self.serve_status_label.config(
+            text=f"🟢 Starting... (PID: {result.get('pid', '?')})",
+            fg=ACCENT_GREEN
+        )
+        self._log_inference(f"✅ Petals server started (PID: {result.get('pid')})")
+        self._log_inference("   Downloading model weights on first run (this may take several minutes)...")
+        self._log_inference("   Once ready, your node will serve AI queries and earn WATT automatically.")
+
+    def _inference_status_changed(self, status, message):
+        """Petals server reported a status change."""
+        if status == "serving":
+            self.serve_status_label.config(text="🟢 Serving inference blocks", fg=ACCENT_GREEN)
+            self._log_inference(f"🧠 {message}")
+        elif status == "loading_model":
+            self.serve_status_label.config(text=f"⏳ {message[:60]}", fg=ACCENT_PURPLE)
+        elif status == "stopped":
+            self.serve_status_label.config(text="⏹ Stopped", fg=TEXT_MUTED)
+
+    def _inference_error(self, error):
+        """Handle inference error."""
+        self._log_inference(f"❌ Error: {error}")
+        self.serve_btn.config(
+            text="🚀  Start Serving Inference",
+            state=tk.NORMAL,
+            bg=ACCENT_PURPLE, fg=TEXT_WHITE
+        )
+        self.serve_status_label.config(text=f"❌ {error[:60]}", fg=ERROR_RED)
+        self.inference_enabled = False
+
+    def stop_inference(self):
+        """Stop Petals server."""
+        self._log_inference("🛑 Stopping inference server...")
+        self.serve_btn.config(state=tk.DISABLED)
+
+        def do_stop():
+            if self.petals_service:
+                self.petals_service.stop_serving()
+            self.root.after(0, self._inference_stopped)
+
+        threading.Thread(target=do_stop, daemon=True).start()
+
+    def _inference_stopped(self):
+        """Server stopped."""
+        self.inference_enabled = False
+        self.serve_btn.config(
+            text="🚀  Start Serving Inference",
+            state=tk.NORMAL,
+            bg=ACCENT_PURPLE, fg=TEXT_WHITE
+        )
+        self.serve_status_label.config(text="⏹ Not serving", fg=TEXT_MUTED)
+        self._log_inference("⏹ Inference server stopped.")
+
+    def _log_inference(self, text):
+        """Add line to inference log (must be called from main thread)."""
+        timestamp = time.strftime("%H:%M:%S")
+        line = f"[{timestamp}] {text}\n"
+        self.inference_log.config(state=tk.NORMAL)
+        self.inference_log.insert(tk.END, line)
+        self.inference_log.see(tk.END)
+        self.inference_log.config(state=tk.DISABLED)
+
+    def _log_inference_safe(self, text):
+        """Thread-safe version — schedules log on main thread."""
+        self.root.after(0, lambda: self._log_inference(text))
+
+    # =========================================================================
+    # SETTINGS TAB
+    # =========================================================================
+
     def create_settings_tab(self):
         """Settings with CPU allocation"""
         container = tk.Frame(self.settings_tab, bg=BG_DARK, padx=15, pady=15)
