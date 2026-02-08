@@ -105,6 +105,10 @@ def build_contributor_list():
     # System/org accounts excluded from leaderboard
     SYSTEM_ACCOUNTS = {"wattcoin-org"}
     
+    # Load banned users for tier override
+    from api_webhooks import load_banned_users
+    banned_users = load_banned_users()
+    
     result = []
     
     # Merit system contributors (primary)
@@ -112,10 +116,14 @@ def build_contributor_list():
         if username.lower() in SYSTEM_ACCOUNTS:
             continue
         
+        tier = data.get("tier", "new")
+        if username.lower() in banned_users:
+            tier = "banned"
+        
         entry = {
             "github": username,
             "score": data.get("score", 0),
-            "tier": data.get("tier", "new"),
+            "tier": tier,
             "merged_prs": data.get("merged_prs", []),
             "rejected_prs": data.get("rejected_prs", []),
             "reverted_prs": data.get("reverted_prs", []),
@@ -162,7 +170,8 @@ TIER_INFO = {
     "silver":  {"emoji": "🥈", "min_score": 50,  "auto_merge_min": 8, "payout_bonus": "+10%"},
     "bronze":  {"emoji": "🥉", "min_score": 1,   "auto_merge_min": 9, "payout_bonus": "standard"},
     "new":     {"emoji": "🆕", "min_score": 0,   "auto_merge_min": None, "payout_bonus": "standard"},
-    "flagged": {"emoji": "🚫", "min_score": None, "auto_merge_min": None, "payout_bonus": "blocked"}
+    "flagged": {"emoji": "🚫", "min_score": None, "auto_merge_min": None, "payout_bonus": "blocked"},
+    "banned":  {"emoji": "⛔", "min_score": None, "auto_merge_min": None, "payout_bonus": "blocked", "reason": "Banned for bounty farming"}
 }
 
 # =============================================================================
