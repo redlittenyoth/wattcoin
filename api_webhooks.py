@@ -995,12 +995,6 @@ def handle_pr_review_trigger(pr_number, action):
     
     if review_error:
         post_github_comment(pr_number, f"❌ **Review failed:** {review_error}")
-        notify_discord(
-            "❌ AI Review Failed",
-            f"PR #{pr_number} review could not complete.",
-            color=0xFF0000,
-            fields={"PR": f"#{pr_number}", "Error": str(review_error)[:200]}
-        )
         return jsonify({"message": "Review failed", "error": review_error}), 500
     
     review_data = review_result.get("review", {})
@@ -1310,12 +1304,6 @@ def github_webhook():
                 "reason": "missing_wallet",
                 "error": wallet_error
             })
-            notify_discord(
-                "⚠️ Wallet Extraction Failed",
-                f"PR #{pr_number} merged but payout wallet not found in PR body.",
-                color=0xFFA500,
-                fields={"PR": f"#{pr_number}", "Author": pr.get("user", {}).get("login", "unknown"), "Error": str(wallet_error)[:200]}
-            )
 
             elapsed = time.time() - start_time
             print(f"[WEBHOOK:{request_id}] Wallet extraction failed for PR #{pr_number} in {elapsed:.2f}s", flush=True)
@@ -1444,16 +1432,6 @@ def github_webhook():
         error_ref = str(_uuid.uuid4())[:8]
         tb = traceback.format_exc()
         print(f"[WEBHOOK:{request_id}] MERGE PAYMENT CRASH ref={error_ref}: {e}\n{tb}", flush=True)
-
-        try:
-            notify_discord(
-                "Webhook Payment Crash",
-                f"PR #{pr_number} merge handler crashed.",
-                color=0xFF0000,
-                fields={"Error": str(e)[:200], "Ref": error_ref, "PR": f"#{pr_number}", "Author": pr_author}
-            )
-        except:
-            pass
 
         try:
             post_github_comment(pr_number,
@@ -1709,12 +1687,6 @@ def process_payment_queue():
                 payment["tx_signature"] = tx_sig
                 payment["error"] = error
                 print(f"[QUEUE] ⚠️ PR #{pr_number} TX sent but unconfirmed: {error}", flush=True)
-                notify_discord(
-                    "⚠️ Payment Unconfirmed",
-                    f"PR #{pr_number} TX sent but confirmation uncertain.",
-                    color=0xFFA500,
-                    fields={"Amount": f"{amount:,} WATT", "TX": str(tx_sig)[:20] + "...", "Error": str(error)[:200]}
-                )
                 
             else:
                 retry_count = payment.get("retry_count", 0) + 1
@@ -1733,12 +1705,6 @@ def process_payment_queue():
                     f"Error: {error}\n\n"
                     f"Retried {retry_count} times. Admin will process this payment manually." )
                     print(f"[QUEUE] ❌ PR #{pr_number} payment failed after {retry_count} retries: {error}", flush=True)
-                    notify_discord(
-                        "❌ Payment Failed",
-                        f"PR #{pr_number} payment failed after {retry_count} retries.",
-                        color=0xFF0000,
-                        fields={"Amount": f"{amount:,} WATT", "Wallet": f"{wallet[:8]}...{wallet[-8:]}", "Error": str(error)[:200]}
-                    )
                 
         except Exception as e:
             retry_count = payment.get("retry_count", 0) + 1
@@ -1753,12 +1719,6 @@ def process_payment_queue():
                 payment["retry_count"] = retry_count
                 payment["error"] = str(e)
                 print(f"[QUEUE] ❌ PR #{pr_number} exception after {retry_count} retries: {e}", flush=True)
-                notify_discord(
-                    "❌ Payment Exception",
-                    f"PR #{pr_number} threw exception after {retry_count} retries.",
-                    color=0xFF0000,
-                    fields={"Amount": f"{amount:,} WATT", "Wallet": f"{wallet[:8]}...{wallet[-8:]}", "Error": str(e)[:200]}
-                )
     
     # Save updated queue
     try:
