@@ -102,10 +102,16 @@ def build_contributor_list():
     rep_data = load_reputation_data()
     merit_contributors = rep_data.get("contributors", {})
     
+    # System/org accounts excluded from leaderboard
+    SYSTEM_ACCOUNTS = {"wattcoin-org"}
+    
     result = []
     
     # Merit system contributors (primary)
     for username, data in merit_contributors.items():
+        if username.lower() in SYSTEM_ACCOUNTS:
+            continue
+        
         entry = {
             "github": username,
             "score": data.get("score", 0),
