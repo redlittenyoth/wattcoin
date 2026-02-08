@@ -17,7 +17,6 @@ import time
 import requests
 from datetime import datetime
 from flask import Blueprint, request, jsonify
-from openai import OpenAI
 
 from pr_security import (
     check_rate_limit,
@@ -38,16 +37,11 @@ pr_review_bp = Blueprint('pr_review', __name__)
 # CONFIG
 # =============================================================================
 
-AI_API_KEY = os.getenv("AI_API_KEY")
+AI_API_KEY = os.getenv("AI_REVIEW_API_KEY", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 REPO = "WattCoin-Org/wattcoin"
 
 PR_REVIEWS_FILE = f"{DATA_DIR}/pr_reviews.json"
-
-# AI client
-ai_client = None
-if AI_API_KEY:
-    ai_client = OpenAI(api_key=AI_API_KEY, base_url="https://api.x.ai/v1")
 
 # =============================================================================
 # GITHUB HELPERS
@@ -183,7 +177,7 @@ def call_ai_review(pr_data, security_warnings):
     Call AI API to review PR.
     Returns: (review_result, error)
     """
-    if not ai_client:
+    if not AI_API_KEY:
         return None, "AI API not configured"
     
     try:
@@ -210,15 +204,12 @@ def call_ai_review(pr_data, security_warnings):
             security_warnings=warnings_text
         )
         
-        # Call AI
-        response = ai_client.chat.completions.create(
-            model="grok-code-fast-1",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=1000
-        )
+        # Call AI via shared provider
+        from ai_provider import call_ai
+        result_text, ai_error = call_ai(prompt, temperature=0.3, max_tokens=1000, timeout=60)
         
-        result_text = response.choices[0].message.content.strip()
+        if ai_error:
+            return None, ai_error
         
         # Parse JSON response
         # Remove markdown code blocks if present
