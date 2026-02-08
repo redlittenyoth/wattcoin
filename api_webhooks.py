@@ -747,6 +747,23 @@ def queue_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=
     
     return True
 
+def load_banned_users():
+    """Load banned users list from data file."""
+    banned_file = os.path.join(DATA_DIR, "banned_users.json")
+    try:
+        with open(banned_file, 'r') as f:
+            data = json.load(f)
+            return {u.lower() for u in data.get("banned", [])}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_banned_users(banned_set):
+    """Save banned users list to data file."""
+    banned_file = os.path.join(DATA_DIR, "banned_users.json")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(banned_file, 'w') as f:
+        json.dump({"banned": sorted(banned_set), "updated": datetime.utcnow().isoformat() + "Z"}, f, indent=2)
+
 def handle_pr_review_trigger(pr_number, action):
     """
     Handle PR opened or synchronized - trigger AI review and auto-merge if passed.
@@ -755,6 +772,73 @@ def handle_pr_review_trigger(pr_number, action):
         "pr_number": pr_number,
         "action": action
     })
+    
+    # === BANNED USER GATE ===
+    import requests as req
+    try:
+        pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
+                         headers=github_headers(), timeout=10)
+        pr_data = pr_resp.json() if pr_resp.status_code == 200 else {}
+        pr_author = pr_data.get("user", {}).get("login", "unknown")
+        pr_body = pr_data.get("body", "") or ""
+    except:
+        pr_author = "unknown"
+        pr_data = {}
+        pr_body = ""
+    
+    banned_users = load_banned_users()
+    if pr_author.lower() in banned_users:
+        comment = (
+            f"## 🚫 PR Rejected — Banned Contributor\n\n"
+            f"@{pr_author} has been permanently banned from the WattCoin bounty system "
+            f"due to repeated policy violations.\n\n"
+            f"This PR has been automatically closed. No further PRs from this account will be reviewed.\n\n"
+            f"— WattCoin Automated Review"
+        )
+        post_github_comment(pr_number, comment)
+        
+        # Close the PR
+        try:
+            close_url = f"https://api.github.com/repos/{REPO}/pulls/{pr_number}"
+            req.patch(close_url, headers=github_headers(), json={"state": "closed"}, timeout=10)
+        except:
+            pass
+        
+        log_security_event("pr_rejected_banned_user", {
+            "pr_number": pr_number,
+            "author": pr_author
+        })
+        
+        notify_discord(
+            "🚫 Banned User PR Rejected",
+            f"PR #{pr_number} from banned user @{pr_author} — auto-closed.",
+            color=0xFF0000,
+            fields={"PR": f"#{pr_number}", "Author": pr_author}
+        )
+        
+        print(f"[BAN-GATE] PR #{pr_number} rejected — {pr_author} is banned", flush=True)
+        return jsonify({"message": "Banned user", "author": pr_author}), 200
+    
+    # === WALLET REQUIREMENT GATE ===
+    wallet, wallet_error = extract_wallet_from_pr_body(pr_body)
+    if wallet_error:
+        comment = (
+            "## ⚠️ Wallet Required\n\n"
+            "No valid Solana wallet found in PR body. **AI review will not run** until a wallet is provided.\n\n"
+            "Add this to your PR description:\n"
+            "```\n**Payout Wallet**: your_solana_address_here\n```\n\n"
+            "Then push any commit to re-trigger review.\n\n"
+            "— WattCoin Automated Review"
+        )
+        post_github_comment(pr_number, comment)
+        
+        log_security_event("pr_blocked_no_wallet", {
+            "pr_number": pr_number,
+            "author": pr_author
+        })
+        
+        print(f"[WALLET-GATE] PR #{pr_number} blocked — no wallet in PR body", flush=True)
+        return jsonify({"message": "Wallet required in PR body"}), 200
     
     # === DUPLICATE BOUNTY GUARD ===
     is_duplicate, issue_number, dup_reason = check_duplicate_bounty(pr_number)
@@ -778,14 +862,7 @@ def handle_pr_review_trigger(pr_number, action):
         except:
             pass
         
-        # Get author for reputation hit
-        try:
-            pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
-                            headers=github_headers(), timeout=10)
-            pr_author = pr_resp.json().get("user", {}).get("login", "unknown") if pr_resp.status_code == 200 else "unknown"
-        except:
-            pr_author = "unknown"
-        
+        # pr_author already fetched above in ban gate
         update_reputation(pr_author, "reject", pr_number)
         
         log_security_event("duplicate_bounty_rejected", {
@@ -827,14 +904,7 @@ def handle_pr_review_trigger(pr_number, action):
     
     # If review passed threshold, check merit system before merging
     if passed and score >= 7:  # Minimum possible threshold (gold tier)
-        # Get PR author
-        import requests as req
-        try:
-            pr_resp = req.get(f"https://api.github.com/repos/{REPO}/pulls/{pr_number}",
-                            headers=github_headers(), timeout=10)
-            pr_author = pr_resp.json().get("user", {}).get("login", "unknown") if pr_resp.status_code == 200 else "unknown"
-        except:
-            pr_author = "unknown"
+        # pr_author already fetched above in ban gate
         
         # Merit system gate
         can_merge, tier, reason = should_auto_merge(pr_author, score)
