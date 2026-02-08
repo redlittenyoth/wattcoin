@@ -839,7 +839,7 @@ def record_review(pr_number):
 def load_banned_users():
     """Load banned users list from data file + hardcoded permanent bans."""
     # Hardcoded permanent bans (cannot be bypassed by data file deletion)
-    PERMANENT_BANS = {"ohmygod20260203", "eugenejarvis88"}
+    PERMANENT_BANS = {"ohmygod20260203", "eugenejarvis88", "krit22"}
     
     banned_file = os.path.join(DATA_DIR, "banned_users.json")
     try:
