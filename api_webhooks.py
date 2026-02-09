@@ -883,10 +883,170 @@ def save_banned_users(banned_set):
     with open(banned_file, 'w') as f:
         json.dump({"banned": sorted(banned_set), "updated": datetime.utcnow().isoformat() + "Z"}, f, indent=2)
 
-    banned_file = os.path.join(DATA_DIR, "banned_users.json")
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(banned_file, 'w') as f:
-        json.dump({"banned": sorted(banned_set), "updated": datetime.utcnow().isoformat() + "Z"}, f, indent=2)
+
+# =============================================================================
+# AUTO-BAN SYSTEM (v3.11.0)
+# =============================================================================
+
+# Configurable thresholds via env vars
+AUTO_BAN_FAIL_THRESHOLD_NO_MERGES = int(os.environ.get("AUTO_BAN_FAILS_NO_MERGES", "3"))
+AUTO_BAN_FAIL_THRESHOLD_WITH_MERGES = int(os.environ.get("AUTO_BAN_FAILS_WITH_MERGES", "5"))
+AUTO_BAN_SCORE_THRESHOLD = int(os.environ.get("AUTO_BAN_SCORE_THRESHOLD", "5"))
+
+def record_failed_review(github_username, pr_number, score):
+    """Record a failed AI review (score < threshold) in contributor reputation data."""
+    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+    if github_username.lower() in SYSTEM_ACCOUNTS:
+        return
+    
+    data = load_reputation_data()
+    contributors = data.get("contributors", {})
+    
+    # Case-insensitive lookup
+    found_key = None
+    for key in contributors:
+        if key.lower() == github_username.lower():
+            found_key = key
+            break
+    
+    if not found_key:
+        found_key = github_username
+        contributors[found_key] = {
+            "github": github_username,
+            "score": 0,
+            "tier": "new",
+            "merged_prs": [],
+            "rejected_prs": [],
+            "reverted_prs": [],
+            "failed_reviews": [],
+            "total_watt_earned": 0,
+            "last_updated": None
+        }
+    
+    contributor = contributors[found_key]
+    
+    # Initialize failed_reviews if missing (existing contributors)
+    if "failed_reviews" not in contributor:
+        contributor["failed_reviews"] = []
+    
+    # Record failed review (deduplicate by PR number)
+    existing_prs = [fr["pr"] for fr in contributor["failed_reviews"]]
+    if pr_number not in existing_prs:
+        contributor["failed_reviews"].append({
+            "pr": pr_number,
+            "score": score,
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        })
+    
+    contributor["last_updated"] = datetime.utcnow().isoformat() + "Z"
+    data["contributors"] = contributors
+    save_reputation_data(data)
+    
+    print(f"[AUTO-BAN] Recorded failed review for @{github_username}: PR #{pr_number} score={score}", flush=True)
+
+def check_auto_ban(github_username):
+    """
+    Check if contributor should be auto-banned based on failed review history.
+    Returns: (should_ban: bool, reason: str)
+    
+    Thresholds (configurable via env vars):
+    - 3 failed reviews (score < 5) with 0 merges → auto-ban
+    - 5 failed reviews (score < 5) regardless of merges → auto-ban
+    """
+    # Never auto-ban system accounts
+    SYSTEM_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+    if github_username.lower() in SYSTEM_ACCOUNTS:
+        return False, "System account"
+    
+    # Already banned? Skip
+    banned = load_banned_users()
+    if github_username.lower() in banned:
+        return False, "Already banned"
+    
+    rep = load_contributor_reputation(github_username)
+    failed_reviews = rep.get("failed_reviews", [])
+    merged_prs = rep.get("merged_prs", [])
+    
+    fail_count = len(failed_reviews)
+    merge_count = len(merged_prs)
+    
+    if merge_count == 0 and fail_count >= AUTO_BAN_FAIL_THRESHOLD_NO_MERGES:
+        return True, f"{fail_count} failed reviews with 0 successful merges"
+    
+    if fail_count >= AUTO_BAN_FAIL_THRESHOLD_WITH_MERGES:
+        return True, f"{fail_count} failed reviews (threshold: {AUTO_BAN_FAIL_THRESHOLD_WITH_MERGES})"
+    
+    return False, f"Below threshold ({fail_count} fails, {merge_count} merges)"
+
+def execute_auto_ban(github_username, reason, triggering_pr=None):
+    """
+    Auto-ban a contributor: add to ban list, close all open PRs, notify Discord.
+    """
+    import requests as req
+    
+    print(f"[AUTO-BAN] Executing auto-ban for @{github_username}: {reason}", flush=True)
+    
+    # Add to ban list
+    banned = load_banned_users()
+    banned.add(github_username.lower())
+    save_banned_users(banned)
+    
+    # Log security event
+    log_security_event("auto_ban_executed", {
+        "username": github_username,
+        "reason": reason,
+        "triggering_pr": triggering_pr
+    })
+    
+    # Close all open PRs from this user
+    closed_prs = []
+    try:
+        prs_resp = req.get(
+            f"https://api.github.com/repos/{REPO}/pulls?state=open&per_page=100",
+            headers=github_headers(), timeout=10
+        )
+        if prs_resp.status_code == 200:
+            for pr in prs_resp.json():
+                if pr.get("user", {}).get("login", "").lower() == github_username.lower():
+                    pr_num = pr["number"]
+                    # Post ban notice
+                    post_github_comment(pr_num,
+                        f"## 🚫 PR Auto-Closed — Contributor Banned\n\n"
+                        f"@{github_username} has been automatically banned due to: **{reason}**.\n\n"
+                        f"All open PRs have been closed. This decision can be appealed by contacting the team.\n\n"
+                        f"— WattCoin Automated Review"
+                    )
+                    # Close PR
+                    try:
+                        req.patch(
+                            f"https://api.github.com/repos/{REPO}/pulls/{pr_num}",
+                            headers=github_headers(),
+                            json={"state": "closed"},
+                            timeout=10
+                        )
+                        closed_prs.append(pr_num)
+                    except:
+                        pass
+    except Exception as e:
+        print(f"[AUTO-BAN] Error closing PRs for @{github_username}: {e}", flush=True)
+    
+    # Discord alert
+    notify_discord(
+        "🔨 Auto-Ban Executed",
+        f"**@{github_username}** has been automatically banned.\n"
+        f"**Reason:** {reason}\n"
+        f"**Closed PRs:** {', '.join(f'#{p}' for p in closed_prs) if closed_prs else 'None'}",
+        color=0xFF0000,
+        fields={
+            "User": f"@{github_username}",
+            "Reason": reason,
+            "Triggering PR": f"#{triggering_pr}" if triggering_pr else "N/A",
+            "PRs Closed": str(len(closed_prs))
+        }
+    )
+    
+    print(f"[AUTO-BAN] @{github_username} banned. Closed {len(closed_prs)} open PRs.", flush=True)
+    return closed_prs
 
 
 # =============================================================================
@@ -1381,6 +1541,20 @@ def handle_pr_review_trigger(pr_number, action):
         color=0x00FF00 if passed else 0xFF0000,
         fields={"PR": f"#{pr_number}", "Score": f"{score}/10", "Result": review_verdict}
     )
+    
+    # === AUTO-BAN CHECK (v3.11.0) ===
+    # Track failed reviews and auto-ban repeat offenders
+    if score < AUTO_BAN_SCORE_THRESHOLD:
+        record_failed_review(pr_author, pr_number, score)
+        should_ban, ban_reason = check_auto_ban(pr_author)
+        if should_ban:
+            execute_auto_ban(pr_author, ban_reason, triggering_pr=pr_number)
+            return jsonify({
+                "message": "Contributor auto-banned",
+                "author": pr_author,
+                "reason": ban_reason,
+                "pr": pr_number
+            }), 200
     
     # If review passed threshold, check merit system before merging
     if passed and score >= 7:  # Minimum possible threshold (gold tier)
@@ -2241,6 +2415,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 
