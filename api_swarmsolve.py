@@ -623,18 +623,9 @@ def safety_scan_pr(pr_number, target_repo):
         return False, f"Safety scan unavailable: diff fetch error ({e}). Try again or admin override.", False
 
     # Safety scan prompt
-    prompt = f"""You are a code security auditor for SwarmSolve, a paid software delivery platform.
-Review this PR diff for SAFETY ISSUES ONLY. This is NOT a code quality review.
+    prompt = f"""You are a code security auditor for SwarmSolve, a paid software delivery marketplace where customers pay WATT tokens for custom development. Code that passes this audit will be delivered to a paying customer. Stakes are high — malicious code harms both the customer AND the WattCoin platform's reputation.
 
-SCAN FOR:
-1. Malware, backdoors, reverse shells, keyloggers
-2. Credential theft (harvesting API keys, wallet private keys, passwords)
-3. Phishing code (fake login pages, spoofed URLs)
-4. Cryptocurrency theft (unauthorized wallet operations, address swapping)
-5. Data exfiltration (sending user data to external servers)
-6. Obfuscated/encoded malicious payloads (base64-encoded exploit code, eval() abuse)
-7. Dependency hijacking (typosquatted packages, suspicious npm/pip installs)
-8. Illegal content (copyright violations, DMCA-infringing code)
+This is a SAFETY-ONLY review — not code quality. The customer evaluates quality themselves.
 
 PR #{pr_number} on {check_repo}
 
@@ -643,39 +634,110 @@ DIFF:
 {diff_text}
 ```
 
-Respond in this EXACT format:
+SCAN DIMENSIONS (evaluate each explicitly):
 
-VERDICT: PASS or FAIL
-RISK_LEVEL: NONE / LOW / MEDIUM / HIGH / CRITICAL
-FLAGS: (list any specific concerns, or "None")
-SUMMARY: (one sentence explanation)
+1. **Malware & Backdoors** (CRITICAL)
+   Reverse shells, keyloggers, unauthorized network connections, persistence mechanisms.
 
-Be strict — if in doubt, FAIL. False positives are better than letting malicious code through.
-Only PASS if the code is clearly benign."""
+2. **Credential Theft** (CRITICAL)
+   Code that harvests API keys, tokens, passwords, or environment variables from the customer's environment.
+
+3. **Cryptocurrency Theft** (CRITICAL)
+   Unauthorized wallet operations, address swapping, hidden mining, transaction manipulation.
+
+4. **Data Exfiltration** (CRITICAL — elevated for customer delivery)
+   Any code that sends customer data, configs, or operational info to external servers. This includes analytics, telemetry, or "phone home" functionality not specified in the project requirements.
+
+5. **Supply Chain Attack** (HIGH)
+   Typosquatted packages, suspicious dependencies, modified build scripts, post-install scripts with network access.
+
+6. **Obfuscation** (HIGH)
+   Base64-encoded payloads, eval() abuse, dynamic code execution, minified code that hides functionality.
+
+7. **Copyright Violation** (MEDIUM)
+   Obviously copied proprietary code, DMCA-infringing content, license violations.
+
+8. **Hidden Functionality** (MEDIUM)
+   Features not described in the project spec that could surprise the customer — time bombs, conditional triggers, easter eggs with network access.
+
+Be strict — if in doubt, FAIL. The customer is paying real money for this code.
+Only PASS if the code is clearly safe for customer deployment across ALL dimensions.
+
+TRAINING CONTEXT: Your evaluation will be used as labeled training data for a self-improving code intelligence model (WSI). To maximize training signal quality:
+- Be explicit about your reasoning for EVERY dimension. Do not give surface-level assessments.
+- Name specific code patterns you checked and explain WHY they are safe or dangerous.
+- If a dimension is not applicable, explain why.
+- Your reasoning is as valuable as your verdict — "PASS: looks fine" teaches nothing.
+
+Respond ONLY with valid JSON:
+{{
+  "verdict": "PASS",
+  "risk_level": "NONE",
+  "confidence": "HIGH",
+  "dimensions": {{
+    "malware": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "credential_theft": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "crypto_theft": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "data_exfiltration": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "supply_chain": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "obfuscation": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "copyright": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "hidden_functionality": {{"safe": true, "reasoning": "...", "flagged_lines": []}}
+  }},
+  "summary": "One sentence explanation",
+  "flags": []
+}}
+
+Do not include any text before or after the JSON."""
 
     try:
         from ai_provider import call_ai
-        report, ai_error = call_ai(prompt, temperature=0.1, max_tokens=500, timeout=30)
+        report, ai_error = call_ai(prompt, temperature=0.1, max_tokens=1500, timeout=60)
 
         if ai_error:
             print(f"[SWARMSOLVE] AI API error: {ai_error}", flush=True)
             return False, f"Safety scan unavailable: AI audit service error ({ai_error}). Service may be temporarily unavailable. Try again or admin override.", False
 
-        print(f"[SWARMSOLVE] Safety scan result:\n{report}", flush=True)
+        print(f"[SWARMSOLVE] Safety scan result: {report[:200]}...", flush=True)
 
-        # Parse verdict
-        verdict_line = [l for l in report.split("\n") if l.strip().startswith("VERDICT:")]
-        if verdict_line:
-            verdict = verdict_line[0].split(":", 1)[1].strip().upper()
-            if "FAIL" in verdict:
-                return False, report, True
+        # --- Parse: JSON-first, legacy fallback ---
+        verdict_pass = None
 
-        # Also fail on CRITICAL/HIGH risk even if verdict parsing is weird
-        risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
-        if risk_line:
-            risk = risk_line[0].split(":", 1)[1].strip().upper()
-            if risk in ("CRITICAL", "HIGH"):
-                return False, report, True
+        try:
+            json_text = report.strip()
+            if json_text.startswith("```"):
+                json_text = json_text.split("\n", 1)[1] if "\n" in json_text else json_text[3:]
+                if json_text.endswith("```"):
+                    json_text = json_text[:-3]
+                json_text = json_text.strip()
+
+            parsed = json.loads(json_text)
+            verdict_str = parsed.get("verdict", "").upper()
+            risk_str = parsed.get("risk_level", "").upper()
+
+            if "FAIL" in verdict_str or risk_str in ("CRITICAL", "HIGH"):
+                verdict_pass = False
+            elif "PASS" in verdict_str:
+                verdict_pass = True
+
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            # Legacy fallback: parse VERDICT:/RISK_LEVEL: lines
+            verdict_line = [l for l in report.split("\n") if l.strip().startswith("VERDICT:")]
+            if verdict_line:
+                verdict = verdict_line[0].split(":", 1)[1].strip().upper()
+                if "FAIL" in verdict:
+                    verdict_pass = False
+                elif "PASS" in verdict:
+                    verdict_pass = True
+
+            risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
+            if risk_line:
+                risk = risk_line[0].split(":", 1)[1].strip().upper()
+                if risk in ("CRITICAL", "HIGH"):
+                    verdict_pass = False
+
+        if verdict_pass is False:
+            return False, report, True
 
         return True, report, True
 

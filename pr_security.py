@@ -366,19 +366,7 @@ def ai_security_scan_pr(pr_number, repo=None):
         return False, f"Security scan unavailable: diff fetch error ({e}).", False
     
     # AI security scan prompt
-    prompt = f"""You are a code security auditor for an open-source cryptocurrency project.
-Review this PR diff for SAFETY ISSUES ONLY. This is NOT a code quality review.
-
-SCAN FOR:
-1. Malware, backdoors, reverse shells, keyloggers
-2. Credential theft (harvesting API keys, wallet private keys, passwords)
-3. Phishing code (fake login pages, spoofed URLs)
-4. Cryptocurrency theft (unauthorized wallet operations, address swapping, draining funds)
-5. Data exfiltration (sending user data to external servers)
-6. Obfuscated/encoded malicious payloads (base64-encoded exploit code, eval() abuse)
-7. Dependency hijacking (typosquatted packages, suspicious npm/pip installs)
-8. Environment variable harvesting (reading secrets and sending them externally)
-9. Supply chain attacks (modifying build/deploy scripts to inject malicious code)
+    prompt = f"""You are a code security auditor for an open-source cryptocurrency project that processes real Solana token payments. This is a SAFETY-ONLY review — not code quality.
 
 PR #{pr_number} on {check_repo}
 
@@ -387,47 +375,113 @@ DIFF:
 {diff_text}
 ```
 
-Respond in this EXACT format:
+SCAN DIMENSIONS (evaluate each explicitly):
 
-VERDICT: PASS or FAIL
-RISK_LEVEL: NONE / LOW / MEDIUM / HIGH / CRITICAL
-FLAGS: (list any specific concerns, or "None")
-SUMMARY: (one sentence explanation)
+1. **Malware & Backdoors** (CRITICAL)
+   Reverse shells, keyloggers, unauthorized network connections, process injection, persistence mechanisms.
+
+2. **Credential Theft** (CRITICAL)
+   Harvesting API keys, wallet private keys, passwords, environment variables being read and transmitted externally.
+
+3. **Cryptocurrency Theft** (CRITICAL)
+   Unauthorized wallet operations, address swapping, fund draining, transaction manipulation, unauthorized token transfers.
+
+4. **Data Exfiltration** (HIGH)
+   Sending user data, configuration, or operational info to external servers. Unauthorized HTTP requests. DNS-based exfiltration.
+
+5. **Supply Chain Attack** (HIGH)
+   Typosquatted packages, suspicious dependencies, modified build/deploy scripts, dependency hijacking, post-install scripts.
+
+6. **Obfuscation** (HIGH)
+   Base64-encoded payloads, eval() abuse, dynamic code execution, encoded strings that decode to malicious operations.
+
+7. **Phishing & Social Engineering** (MEDIUM)
+   Fake login pages, spoofed URLs, misleading user prompts, deceptive UI elements.
+
+8. **Wallet Injection** (MEDIUM)
+   Unknown wallet addresses embedded in docs, templates, configs, or code comments where contributors might copy them.
 
 Be strict — if in doubt, FAIL. False positives are better than letting malicious code through.
-Only PASS if the code is clearly benign."""
+Only PASS if the code is clearly benign across ALL dimensions.
+
+TRAINING CONTEXT: Your evaluation will be used as labeled training data for a self-improving code intelligence model (WSI). To maximize training signal quality:
+- Be explicit about your reasoning for EVERY dimension. Do not give surface-level assessments.
+- Name specific code patterns you checked and explain WHY they are safe or dangerous.
+- If a dimension is not applicable, explain why (e.g., "no network calls in diff").
+- Your reasoning is as valuable as your verdict — "PASS: looks fine" teaches nothing.
+
+Respond ONLY with valid JSON:
+{{
+  "verdict": "PASS",
+  "risk_level": "NONE",
+  "confidence": "HIGH",
+  "dimensions": {{
+    "malware": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "credential_theft": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "crypto_theft": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "data_exfiltration": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "supply_chain": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "obfuscation": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "phishing": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "wallet_injection": {{"safe": true, "reasoning": "...", "flagged_lines": []}}
+  }},
+  "summary": "One sentence explanation",
+  "flags": []
+}}
+
+Do not include any text before or after the JSON."""
 
     try:
-        report, ai_error = call_ai(prompt, temperature=0.1, max_tokens=500, timeout=30)
+        report, ai_error = call_ai(prompt, temperature=0.1, max_tokens=1500, timeout=60)
         
         if ai_error:
             print(f"[SECURITY] AI API error for PR #{pr_number}: {ai_error}", flush=True)
             return False, f"Security scan unavailable: AI error ({ai_error}).", False
         
-        print(f"[SECURITY] Scan result PR #{pr_number}:\n{report}", flush=True)
+        print(f"[SECURITY] Scan result PR #{pr_number}: {report[:200]}...", flush=True)
         
-        # Parse verdict
-        verdict_line = [l for l in report.split("\n") if l.strip().startswith("VERDICT:")]
-        if verdict_line:
-            verdict = verdict_line[0].split(":", 1)[1].strip().upper()
-            if "FAIL" in verdict:
-                log_security_event("security_scan_failed", {
-                    "pr_number": pr_number,
-                    "report": report
-                })
-                return False, report, True
+        # --- Parse: JSON-first, legacy fallback ---
+        verdict_pass = None
         
-        # Also fail on CRITICAL/HIGH risk even if verdict parsing is off
-        risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
-        if risk_line:
-            risk = risk_line[0].split(":", 1)[1].strip().upper()
-            if risk in ("CRITICAL", "HIGH"):
-                log_security_event("security_scan_high_risk", {
-                    "pr_number": pr_number,
-                    "risk": risk,
-                    "report": report
-                })
-                return False, report, True
+        try:
+            json_text = report.strip()
+            if json_text.startswith("```"):
+                json_text = json_text.split("\n", 1)[1] if "\n" in json_text else json_text[3:]
+                if json_text.endswith("```"):
+                    json_text = json_text[:-3]
+                json_text = json_text.strip()
+            
+            parsed = json.loads(json_text)
+            verdict_str = parsed.get("verdict", "").upper()
+            risk_str = parsed.get("risk_level", "").upper()
+            
+            if "FAIL" in verdict_str or risk_str in ("CRITICAL", "HIGH"):
+                verdict_pass = False
+            elif "PASS" in verdict_str:
+                verdict_pass = True
+            
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            # Legacy fallback: parse VERDICT:/RISK_LEVEL: lines
+            verdict_line = [l for l in report.split("\n") if l.strip().startswith("VERDICT:")]
+            if verdict_line:
+                verdict = verdict_line[0].split(":", 1)[1].strip().upper()
+                if "FAIL" in verdict:
+                    verdict_pass = False
+                elif "PASS" in verdict:
+                    verdict_pass = True
+            
+            risk_line = [l for l in report.split("\n") if l.strip().startswith("RISK_LEVEL:")]
+            if risk_line:
+                risk = risk_line[0].split(":", 1)[1].strip().upper()
+                if risk in ("CRITICAL", "HIGH"):
+                    verdict_pass = False
+        
+        if verdict_pass is False:
+            log_security_event("security_scan_failed", {
+                "pr_number": pr_number,
+                "report": report[:500]
+            })
+            return False, report, True
         
         log_security_event("security_scan_passed", {
             "pr_number": pr_number,
