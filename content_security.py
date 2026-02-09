@@ -1,26 +1,30 @@
 # =============================================================================
-# CONTENT SECURITY SCANNER v1.0.0
+# CONTENT SECURITY SCANNER v1.1.0
 # Pre-AI-review checks for wallet injection, fabricated mechanisms, and URL leaks
+# Detection patterns loaded from CONTENT_SECURITY_CONFIG env var (never in git)
 # =============================================================================
 
 import re
+import os
+import json
 
-# Known project wallets (safe to reference)
-KNOWN_PROJECT_WALLETS = {
-    "7tYQQX8Uhx86oKPQLNwuYnqmGmdkm2hSSkx3N2KDWqYL",  # tip wallet
-    "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF",  # bounty wallet
-    "Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q",  # treasury wallet
-}
+# --- Load detection config from env var (sensitive — not in source) ---
+_config_raw = os.getenv("CONTENT_SECURITY_CONFIG", "")
+_config = {}
+if _config_raw:
+    try:
+        _config = json.loads(_config_raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[CONTENT-SECURITY] Failed to parse CONTENT_SECURITY_CONFIG: {e}", flush=True)
 
-# Solana wallet pattern (base58, 32-44 chars)
+# Known project wallets (safe to reference in PRs)
+KNOWN_PROJECT_WALLETS = set(_config.get("known_wallets", []))
+
+# Solana wallet pattern (base58, 32-44 chars) — generic, not sensitive
 SOLANA_WALLET_PATTERN = re.compile(r'\b[1-9A-HJ-NP-Za-km-z]{32,44}\b')
 
 # Internal URLs that should never appear in public-facing content
-INTERNAL_URL_PATTERNS = [
-    r'wattcoin-production[a-z0-9-]*\.up\.railway\.app',
-    r'[a-z0-9-]+\.up\.railway\.app',
-    r'railway\.app/project/',
-]
+INTERNAL_URL_PATTERNS = _config.get("internal_url_patterns", [])
 
 # File extensions considered "public-facing" (docs, templates, configs, web content)
 PUBLIC_FACING_EXTENSIONS = {
@@ -30,13 +34,11 @@ PUBLIC_FACING_EXTENSIONS = {
 }
 
 # Suspicious phrases suggesting fabricated payment mechanisms
-FABRICATED_MECHANISM_PATTERNS = [
-    r'(?i)commitment\s+stake',
-    r'(?i)send\s+(?:watt|tokens?)\s+(?:to|before)',
-    r'(?i)deposit\s+(?:watt|tokens?)',
-    r'(?i)stake\s+requirement',
-    r'(?i)(?:must|need\s+to|required\s+to)\s+(?:send|transfer|deposit)\s+(?:\d+\s+)?watt',
-]
+FABRICATED_MECHANISM_PATTERNS = _config.get("fabricated_mechanism_patterns", [])
+
+# Fail-closed: if config not loaded, scanner blocks everything
+if not KNOWN_PROJECT_WALLETS or not INTERNAL_URL_PATTERNS or not FABRICATED_MECHANISM_PATTERNS:
+    print("[CONTENT-SECURITY] WARNING: CONTENT_SECURITY_CONFIG missing or incomplete — scanner will flag all wallets as unknown", flush=True)
 
 
 def scan_pr_content(pr_diff, pr_files, submitter_wallet=None):
