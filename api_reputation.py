@@ -116,7 +116,7 @@ DISPLAY_OVERRIDES = {
 }
 
 # System/internal accounts excluded from leaderboard entirely
-EXCLUDED_ACCOUNTS = {"wattcoin-org", "manual_admin_payout", "swarmsolve-refund"}
+EXCLUDED_ACCOUNTS = {"wattcoin-org", "unknown", "manual_admin_payout", "swarmsolve-refund"}
 
 # =============================================================================
 # DATA LOADING
