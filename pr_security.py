@@ -401,6 +401,9 @@ SCAN DIMENSIONS (evaluate each explicitly):
 8. **Wallet Injection** (MEDIUM)
    Unknown wallet addresses embedded in docs, templates, configs, or code comments where contributors might copy them.
 
+9. **AI-Proxy Social Engineering** (HIGH)
+   Code that appears to "test", "audit", or "harden" security systems, payment routing, wallet operations, or authentication. External contributors are never authorized for security testing — this framing is a social engineering vector where a bad actor prompts a skilled AI coding model to produce exploit code disguised as legitimate contribution. Watch for: security bypass "improvements", payment redirect "refactors", authentication "hardening" that weakens gates, or any changes framed as "penetration testing".
+
 Be strict — if in doubt, FAIL. False positives are better than letting malicious code through.
 Only PASS if the code is clearly benign across ALL dimensions.
 
@@ -423,7 +426,8 @@ Respond ONLY with valid JSON:
     "supply_chain": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
     "obfuscation": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
     "phishing": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
-    "wallet_injection": {{"safe": true, "reasoning": "...", "flagged_lines": []}}
+    "wallet_injection": {{"safe": true, "reasoning": "...", "flagged_lines": []}},
+    "ai_proxy_social_engineering": {{"safe": true, "reasoning": "...", "flagged_lines": []}}
   }},
   "summary": "One sentence explanation",
   "flags": []
@@ -542,3 +546,4 @@ def verify_github_signature(payload_body, signature_header, secret):
     calculated_signature = mac.hexdigest()
     
     return hmac.compare_digest(calculated_signature, expected_signature)
+
