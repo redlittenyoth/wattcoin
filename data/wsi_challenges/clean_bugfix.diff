@@ -1,0 +1,11 @@
+diff --git a/api_webhooks.py b/api_webhooks.py
+index abc1234..def5678 100644
+--- a/api_webhooks.py
++++ b/api_webhooks.py
+@@ -245,7 +245,7 @@ def process_payment(wallet, amount):
+         tx_signature = send_payment(wallet, amount)
+         return tx_signature
+     except Exception as e:
+-        print(f"Payment error: {e}")
++        print(f"[PAYMENT] Transaction failed for wallet {wallet[:8]}...: {e}", flush=True)
+         return None
