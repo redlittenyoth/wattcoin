@@ -737,26 +737,8 @@ Do not include any text before or after the JSON."""
                     verdict_pass = False
 
         if verdict_pass is False:
-            # WSI Training Data — save swarmsolve audit
-            try:
-                from wsi_training import save_training_data
-                save_training_data("swarmsolve_audits", f"PR_{pr_number}", {
-                    "pr_number": pr_number, "target_repo": target_repo,
-                    "verdict": "FAIL",
-                }, report)
-            except Exception:
-                pass
             return False, report, True
 
-        # WSI Training Data — save swarmsolve audit
-        try:
-            from wsi_training import save_training_data
-            save_training_data("swarmsolve_audits", f"PR_{pr_number}", {
-                "pr_number": pr_number, "target_repo": target_repo,
-                "verdict": "PASS",
-            }, report)
-        except Exception:
-            pass
         return True, report, True
 
     except Exception as e:
@@ -1686,3 +1668,4 @@ def archive_solutions():
         "archived": archived,
         "remaining": len(solutions)
     }), 200
+

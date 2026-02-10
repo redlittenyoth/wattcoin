@@ -460,22 +460,6 @@ Do not include any text before or after the JSON."""
             result["completeness"] = parsed.get("completeness", "")
             result["suggested_payout"] = parsed.get("suggested_payout", "")
         
-        # WSI Training Data — save review for future fine-tuning
-        try:
-            from wsi_training import save_training_data
-            repo = pr_info.get("repo", os.getenv("GITHUB_REPO", "WattCoin-Org/wattcoin"))
-            signal = "pr_reviews_internal" if "internal" in repo else "pr_reviews_public"
-            save_training_data(signal, f"PR_{pr_info['number']}", {
-                "pr_number": pr_info.get("number"),
-                "title": pr_info.get("title"),
-                "author": pr_info.get("author"),
-                "repo": repo,
-                "score": result.get("score"),
-                "passed": result.get("passed"),
-            }, content)
-        except Exception:
-            pass
-
         return result
     except Exception as e:
         return {"error": f"AI request failed: {str(e)}"}
@@ -630,22 +614,6 @@ Do not include any text before or after the JSON."""
             result["confidence"] = parsed.get("confidence", "")
             result["novel_patterns"] = parsed.get("novel_patterns", [])
             result["cross_pollination"] = parsed.get("cross_pollination", [])
-
-        # WSI Training Data — save internal review (highest-quality signal)
-        try:
-            from wsi_training import save_training_data
-            save_training_data("pr_reviews_internal", f"PR_{pr_info['number']}", {
-                "pr_number": pr_info.get("number"),
-                "title": pr_info.get("title"),
-                "author": pr_info.get("author"),
-                "repo": "WattCoin-Org/wattcoin-internal",
-                "score": result.get("score"),
-                "passed": result.get("passed"),
-                "prompt_version": "internal_v1.0",
-                "dimensions_count": len(parsed.get("dimensions", {})) if parsed else 0,
-            }, content)
-        except Exception:
-            pass
 
         return result
     except Exception as e:
@@ -3228,6 +3196,7 @@ def api_ban_user(username):
     _save_banned_users(data)
     
     return jsonify({"success": True, "message": f"Banned {username}", "banned": data["banned"]})
+
 
 
 
