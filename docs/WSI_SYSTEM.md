@@ -6,7 +6,7 @@
 
 ## Overview
 
-WattCoin SuperIntelligence (WSI) is the collective AI entity powered by the WattCoin ecosystem. In Phase 1, it's a token-gated chat interface powered by Grok. Future phases will evolve into a true distributed swarm intelligence.
+WattCoin SuperIntelligence (WSI) is the collective AI entity powered by the WattCoin ecosystem. In Phase 1, it's a token-gated chat interface powered by AI. Future phases will evolve into a true distributed swarm intelligence.
 
 **Key Features:**
 - 🧠 Token-gated access (5K WATT minimum)
@@ -32,7 +32,7 @@ POST /api/v1/wsi/chat
          ↓
     WSI Personality Prompt
          ↓
-      Grok API
+      AI API
          ↓
     Response + Tracking
 ```
@@ -130,8 +130,8 @@ Get WSI system information.
 {
   "system": "WattCoin SuperIntelligence (WSI)",
   "version": "1.0.0 - Phase 1",
-  "phase": "Phase 1: Single Grok Model",
-  "model": "grok-beta",
+  "phase": "Phase 1: AI-Powered",
+  "model": "configured-model",
   "requirements": {
     "min_balance": 5000,
     "daily_limit": 20
@@ -228,7 +228,7 @@ Or link to standalone page:
 ## Phase Roadmap
 
 ### Phase 1 (Current) ✅
-- Single Grok model
+- Single AI model
 - Token-gated access
 - 20 queries/day
 - Web chat interface
@@ -264,7 +264,7 @@ Or link to standalone page:
 3. Submit a PR with this format:
    - **Payout Wallet**: [your_solana_address]
    - Description of changes
-4. Grok will auto-review your PR (needs score ≥8)
+4. AI will auto-review your PR (needs score ≥8)
 5. After merge, payout is queued for admin approval
 
 Current bounties range from 50K-100K WATT. Check out docs/PR_BOUNTY_SYSTEM.md for details!"
@@ -383,7 +383,7 @@ curl https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/info
 
 **"Connection failed"**
 - Check Railway deployment status
-- Verify Grok API key configured
+- Verify AI API key configured
 - Check Solana RPC availability
 
 **Balance not updating**
@@ -419,7 +419,7 @@ curl https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/info
 
 ### v1.0.0 (Feb 4, 2026)
 - Initial Phase 1 release
-- Token-gated Grok chat
+- Token-gated AI chat
 - Web interface
 - 5K WATT minimum
 - 20 queries/day limit
@@ -429,3 +429,4 @@ curl https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/info
 ---
 
 **WSI is live! Hold 5K WATT and start chatting with the network.** ⚡
+

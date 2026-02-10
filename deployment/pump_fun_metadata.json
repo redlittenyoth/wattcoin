@@ -1,35 +1,43 @@
 {
-  "name": "WattCoin",
-  "symbol": "WATT",
-  "description": "WattCoin (WATT) — Pure utility token on Solana for AI/robot automation. Energy payments, task rewards, maintenance staking for home/industrial bots and digital agents. Compatible with Grok 4/5, Optimus, Cybercab, Boston Dynamics, Ecovacs. 0.15% tx burn. Usage-only value. No investment promises.",
-  "image": "https://gateway.pinata.cloud/ipfs/bafkreiexe7oxsyji7tezugw75a2ro6zls7zis7rxldbczi3ylv4gmcufda",
-  "decimals": 9,
-  "supply": 1000000000,
-  "utility_features": {
-    "energy_payments": "Pay for electricity, charging, fuel",
-    "task_execution": "Compensate AI agents and robots for completed tasks",
-    "maintenance_rewards": "Incentivize system upkeep and optimization",
-    "burn_mechanism": "0.15% of each transaction burned permanently"
-  },
-  "technical_specs": {
-    "blockchain": "Solana",
-    "standard": "SPL Token",
-    "burn_rate": "0.15% per transaction",
-    "total_supply": "1,000,000,000 WATT",
-    "ai_compatible": ["Grok 4/5", "GPT", "Claude", "Gemini", "Tesla AI5", "Optimus", "Cybercab"]
-  },
-  "tokenomics": {
-    "ecosystem_fund": "40% - Development and utility expansion",
-    "development": "30% - Technical infrastructure",
-    "team": "20% - 4-year vesting, utility development only", 
-    "airdrops": "10% - Early utility users and beta testers (1% targeted to verified robot/AI task completers)"
-  },
-  "compliance": {
-    "type": "UTILITY TOKEN ONLY",
-    "investment_warning": "Not an investment. Only purchase if you intend to use for AI/robot energy/task payments.",
-    "regulatory_status": "Utility token for specific technical use cases",
-    "no_financial_promises": "No returns promised. Value derived purely from utility demand."
-  },
-  "whitepaper": "https://gateway.pinata.cloud/ipfs/bafkreihxfwy4mzk2kmyundq24p6p44cwarxcdxn5szjzzxtxy55nkmnjsq",
-  "contact": "anonymous"
+    "name": "WattCoin",
+    "symbol": "WATT",
+    "description": "WattCoin (WATT) \u2014 Pure utility token on Solana for AI/robot automation. Energy payments, task rewards, maintenance staking for home/industrial bots and digital agents. Compatible with leading AI models, Optimus, Cybercab, Boston Dynamics, Ecovacs. 0.15% tx burn. Usage-only value. No investment promises.",
+    "image": "https://gateway.pinata.cloud/ipfs/bafkreiexe7oxsyji7tezugw75a2ro6zls7zis7rxldbczi3ylv4gmcufda",
+    "decimals": 9,
+    "supply": 1000000000,
+    "utility_features": {
+        "energy_payments": "Pay for electricity, charging, fuel",
+        "task_execution": "Compensate AI agents and robots for completed tasks",
+        "maintenance_rewards": "Incentivize system upkeep and optimization",
+        "burn_mechanism": "0.15% of each transaction burned permanently"
+    },
+    "technical_specs": {
+        "blockchain": "Solana",
+        "standard": "SPL Token",
+        "burn_rate": "0.15% per transaction",
+        "total_supply": "1,000,000,000 WATT",
+        "ai_compatible": [
+            "Leading AI Models",
+            "GPT",
+            "Claude",
+            "Gemini",
+            "Tesla AI5",
+            "Optimus",
+            "Cybercab"
+        ]
+    },
+    "tokenomics": {
+        "ecosystem_fund": "40% - Development and utility expansion",
+        "development": "30% - Technical infrastructure",
+        "team": "20% - 4-year vesting, utility development only",
+        "airdrops": "10% - Early utility users and beta testers (1% targeted to verified robot/AI task completers)"
+    },
+    "compliance": {
+        "type": "UTILITY TOKEN ONLY",
+        "investment_warning": "Not an investment. Only purchase if you intend to use for AI/robot energy/task payments.",
+        "regulatory_status": "Utility token for specific technical use cases",
+        "no_financial_promises": "No returns promised. Value derived purely from utility demand."
+    },
+    "whitepaper": "https://gateway.pinata.cloud/ipfs/bafkreihxfwy4mzk2kmyundq24p6p44cwarxcdxn5szjzzxtxy55nkmnjsq",
+    "contact": "anonymous"
 }

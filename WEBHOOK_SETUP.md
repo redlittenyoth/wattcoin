@@ -199,6 +199,7 @@ cat /app/data/bounty_reviews.json
 ## Support
 
 If automation fails, payouts are queued for manual review at:
-https://wattcoin-production-81a7.up.railway.app/admin/dashboard
+[ADMIN_URL — see Railway env vars]
 
 Admin can approve queued payouts with one click.
+

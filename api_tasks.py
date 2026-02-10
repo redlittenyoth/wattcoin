@@ -166,17 +166,10 @@ def ai_verify_submission(task, submission):
         return False
 
     try:
-        from openai import OpenAI
-        ai_key = os.getenv('AI_API_KEY')
-        if not ai_key:
-            logger.error("AI_API_KEY not set — cannot verify")
-            return -1, "AI verification unavailable (missing AI_API_KEY)"
-
+        from ai_provider import call_ai
         timeout_s = int(os.getenv("AI_VERIFY_TIMEOUT_SECONDS", "60"))
         max_attempts = int(os.getenv("AI_VERIFY_MAX_ATTEMPTS", "3"))
         backoff_s = [1, 2, 4]
-
-        client = OpenAI(api_key=ai_key, base_url="https://api.x.ai/v1")
 
         # Build requirements list for per-requirement checklist
         requirements_raw = task.get('requirements', 'None specified')
@@ -223,13 +216,6 @@ SCORING:
 
 THRESHOLD: Score >= 7 to pass verification. Below 7 = task reopened for other agents.
 
-TRAINING CONTEXT: Your evaluation will be used as labeled training data for a self-improving code intelligence model (WSI). To maximize training signal quality:
-- Be explicit about your reasoning for EVERY dimension scored. Do not give surface-level assessments.
-- Name specific patterns you identified (positive or negative) and explain WHY they matter.
-- When scoring, explain what would move the score higher or lower.
-- If you detect novel approaches or techniques, call them out explicitly.
-- Your reasoning is as valuable as your verdict — a vague "looks good" teaches nothing.
-
 Respond ONLY with valid JSON in this exact format:
 {{
   "pass": true,
@@ -255,35 +241,23 @@ Respond ONLY with valid JSON in this exact format:
 
 Do not include any text before or after the JSON."""
 
-        last_err: Exception | None = None
-        response = None
+        ai_content = None
+        last_err_msg = None
         for attempt in range(1, max_attempts + 1):
-            try:
-                response = client.chat.completions.create(
-                    model="grok-3",
-                    messages=[{"role": "user", "content": verify_prompt}],
-                    max_tokens=1500,
-                    timeout=timeout_s,
-                )
+            ai_content, ai_error = call_ai(verify_prompt, temperature=0.3, max_tokens=1500, timeout=timeout_s)
+            if ai_content and not ai_error:
                 break
-            except Exception as e:
-                last_err = e
-                if attempt >= max_attempts or not _is_retryable_error(e):
-                    raise
-                sleep_s = backoff_s[min(attempt - 1, len(backoff_s) - 1)]
-                logger.warning(
-                    "AI verification retrying (attempt %d/%d, sleep=%ss): %s",
-                    attempt,
-                    max_attempts,
-                    sleep_s,
-                    str(e),
-                )
-                time.sleep(sleep_s)
+            last_err_msg = ai_error or "Empty AI response"
+            if attempt >= max_attempts:
+                raise RuntimeError(f"AI verification failed after {max_attempts} attempts: {last_err_msg}")
+            sleep_s = backoff_s[min(attempt - 1, len(backoff_s) - 1)]
+            logger.warning(
+                "AI verification retrying (attempt %d/%d, sleep=%ss): %s",
+                attempt, max_attempts, sleep_s, last_err_msg,
+            )
+            time.sleep(sleep_s)
 
-        if response is None:
-            raise last_err or RuntimeError("AI verification failed without response")
-
-        content = response.choices[0].message.content
+        content = ai_content
 
         # --- Parse response: JSON-first, fallback to legacy SCORE:/FEEDBACK: ---
         score = 0
@@ -307,7 +281,6 @@ Do not include any text before or after the JSON."""
                 score = int(parsed["score"])
                 # Use summary as feedback, fall back to full content
                 feedback = parsed.get("summary", content)
-                # Store WSI training data
                 extra = {
                     "confidence": parsed.get("confidence", "UNKNOWN"),
                     "dimensions": parsed.get("dimensions", {}),
@@ -336,20 +309,6 @@ Do not include any text before or after the JSON."""
 
             if not found_score:
                 return -1, f"Verification error (pending manual review): malformed AI response: {content[:500]}"
-
-        # WSI Training Data — save task verification
-        try:
-            from wsi_training import save_training_data
-            save_training_data("task_verifications", f"task_{task.get('id', 'unknown')}", {
-                "task_id": task.get("id"),
-                "task_title": task.get("title"),
-                "task_type": task.get("type"),
-                "reward": task.get("reward"),
-                "score": min(max(score, 0), 10),
-                "passed": score >= VERIFY_THRESHOLD,
-            }, content)
-        except Exception:
-            pass
 
         return min(max(score, 0), 10), feedback, extra
 
@@ -1320,3 +1279,4 @@ def task_leaderboard():
     payload = {"success": True, "leaderboard": leaderboard}
     _leaderboard_cache[key] = (now, payload)
     return jsonify(payload)
+

@@ -6,7 +6,6 @@ Evaluates GitHub issues for bounty eligibility using AI
 
 import os
 import re
-from openai import OpenAI
 
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 
@@ -95,21 +94,15 @@ def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
     )
     
     try:
-        # Call AI API
-        client = OpenAI(
-            api_key=AI_API_KEY,
-            base_url="https://api.x.ai/v1"
-        )
+        # Call AI API (vendor-neutral via ai_provider)
+        from ai_provider import call_ai
+        ai_output, ai_error = call_ai(prompt, temperature=0.3, max_tokens=1500, timeout=60)
         
-        response = client.chat.completions.create(
-            model="grok-3",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=1500,
-            timeout=60
-        )
-        
-        ai_output = response.choices[0].message.content
+        if ai_error or not ai_output:
+            return {
+                "decision": "ERROR",
+                "error": f"AI API error: {ai_error}"
+            }
         
         # Parse AI response: JSON-first, regex fallback
         result = parse_ai_bounty_response(ai_output)
@@ -191,4 +184,5 @@ def parse_ai_bounty_response(output):
         result["suggested_title"] = title_match.group(1).strip()
     
     return result
+
 
