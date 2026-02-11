@@ -312,7 +312,7 @@ Instead of per-job payments:
 Extend existing `bridge.py` or create new service:
 
 ```
-wattcoin-production.up.railway.app
+your-backend-url.example.com
 ├── /health              (existing)
 ├── /proxy               (existing)
 ├── /api/v1/scrape       (new)
@@ -475,7 +475,7 @@ Agents: Pay WATT for reliable web scraping.
 
 Pricing: 100-500 WATT per scrape (~$0.0004-0.002)
 
-API: https://wattcoin-production.up.railway.app/api/v1/scrape
+API: https://your-backend-url.example.com/api/v1/scrape
 Docs: [link]
 
 Real utility. Real demand. Real burn.
@@ -511,7 +511,7 @@ job_id = str(uuid.uuid4())
 
 # 3. Call scraper API
 response = requests.post(
-    "https://wattcoin-production.up.railway.app/api/v1/scrape",
+    "https://your-backend-url.example.com/api/v1/scrape",
     json={
         "url": "https://news.site/article",
         "job_id": job_id,

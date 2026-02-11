@@ -1321,7 +1321,7 @@ def trigger_ai_review_internal(pr_number):
             "changed_files": pr_data.get("changed_files", 0)
         }
         
-        # Call AI review (internal deep context prompt — highest-quality WSI training data)
+        # Call AI review (internal deep context prompt)
         from admin_blueprint import call_ai_review_internal
         review_result = call_ai_review_internal(pr_info)
         

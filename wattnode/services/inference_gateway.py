@@ -15,7 +15,7 @@ Usage:
     WSI_GATEWAY_KEY=mysecret python inference_gateway.py # with auth
 
 Requirements:
-    pip install petals torch transformers flask  # inference engine + dependencies
+    pip install petals torch transformers flask  # distributed inference dependencies
 
 Version: 1.0.0
 """
@@ -127,7 +127,7 @@ def load_model(model_name):
         return (model, tokenizer), None
 
     except ImportError:
-        err = "Inference engine not installed. Run: pip install petals torch transformers"
+        err = "Distributed inference not installed. Run: pip install petals torch transformers"
         _load_errors[model_name] = err
         logger.error(err)
         return None, err

@@ -3,7 +3,7 @@
 **Version:** 0.1.0 (Draft)  
 **Status:** Planned (Q2 2026)  
 **Author:** Claude (Implementation Lead)  
-**Reviewer:** Grok (Strategy Consultant)  
+**Reviewer:** AI (Strategy Consultant)  
 
 ## References
 
@@ -15,7 +15,7 @@
 
 ## 1. Overview
 
-AI Verification Webhooks provide trustless task completion validation for the WattCoin escrow system. When an agent completes a task, an AI oracle (Grok, Claude, GPT) verifies the work quality before releasing escrowed WATT.
+AI Verification Webhooks provide trustless task completion validation for the WattCoin escrow system. When an agent completes a task, an AI oracle verifies the work quality before releasing escrowed WATT.
 
 ### Core Problem
 Escrow systems need impartial verification. Human verification doesn't scale. AI verification is expensive if abused.
@@ -61,7 +61,7 @@ A multi-tier verification system where:
 │         │ PASS                                                   │
 │         ▼                                                        │
 │  ┌─────────────┐                                                │
-│  │ AI Oracle   │──── Grok API (primary)                        │
+│  │ AI Oracle   │──── AI API (primary)                        │
 │  │ Verification│     Claude API (fallback)                      │
 │  └──────┬──────┘     GPT API (dispute resolution)              │
 │         │                                                        │
@@ -164,7 +164,7 @@ Content-Type: application/json
 {
   "verified": true,
   "confidence": 0.95,
-  "oracle": "grok",
+  "oracle": "ai",
   "verification_id": "uuid",
   "fee_burned": 10,
   "cached": false,
@@ -177,7 +177,7 @@ Content-Type: application/json
 {
   "verified": false,
   "confidence": 0.87,
-  "oracle": "grok",
+  "oracle": "ai",
   "reason": "Output does not match task requirements",
   "verification_id": "uuid",
   "fee_burned": 10,
@@ -221,8 +221,8 @@ Triggers multi-AI verification:
 
 | Priority | Provider | Use Case |
 |----------|----------|----------|
-| Primary | Grok (xAI) | Fast, cost-effective for most tasks |
-| Fallback | Claude (Anthropic) | When Grok unavailable |
+| Primary | AI Provider | Fast, cost-effective for most tasks |
+| Fallback | Claude (Anthropic) | When primary unavailable |
 | Dispute | GPT (OpenAI) | Third-party tiebreaker |
 
 ### 5.2 Prompt Template
@@ -254,7 +254,7 @@ Respond ONLY with JSON:
 
 | Provider | Model | Cost/1K tokens | Est. cost/verification |
 |----------|-------|----------------|------------------------|
-| xAI | grok-3 | $0.005 | ~$0.01 |
+| AI Provider | configurable | varies | varies |
 | Anthropic | claude-sonnet | $0.003 | ~$0.008 |
 | OpenAI | gpt-4o | $0.005 | ~$0.01 |
 
@@ -312,7 +312,7 @@ The webhook service signs verification results with its Solana keypair. The smar
 ### Phase 1: Foundation (Q2 2026)
 - [ ] Verification endpoint with rate limiting
 - [ ] WATT fee integration (burn on request)
-- [ ] Single oracle (Grok) integration
+- [ ] Single oracle (AI) integration
 - [ ] Basic caching (Redis)
 
 ### Phase 2: Robustness (Q3 2026)

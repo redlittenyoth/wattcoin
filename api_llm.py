@@ -272,10 +272,10 @@ def call_grok(prompt):
         return None, 0, "Grok API key not configured"
     
     try:
-        client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
+        client = OpenAI(api_key=GROK_API_KEY, base_url=os.getenv("AI_API_BASE_URL", ""))
         
         response = client.chat.completions.create(
-            model="grok-4-1-fast-reasoning",
+            model=os.getenv("AI_CHAT_MODEL", ""),
             messages=[
                 {"role": "user", "content": prompt}
             ],

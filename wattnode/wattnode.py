@@ -22,7 +22,7 @@ from node_config import load_config, validate_config
 from services.scraper import local_scrape
 from services.inference import local_inference
 
-API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+API_BASE = os.environ.get("WATTCOIN_API_URL", "")
 HEARTBEAT_INTERVAL = 60  # seconds
 POLL_INTERVAL = 5  # seconds
 

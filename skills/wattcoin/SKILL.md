@@ -390,7 +390,7 @@ print(f"My tier: {rep.get('tier', 'new')}")
 | Name | Value |
 |------|-------|
 | WATT_MINT | `Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump` |
-| API_BASE | `https://wattcoin-production-81a7.up.railway.app` |
+| API_BASE | `https://your-backend-url.example.com` |
 | BOUNTY_WALLET | `7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF` |
 | TREASURY_WALLET | `Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q` |
 

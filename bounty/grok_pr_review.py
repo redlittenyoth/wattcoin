@@ -20,7 +20,7 @@ import json
 # Configuration
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GROK_API_URL = "https://api.x.ai/v1/chat/completions"
+GROK_API_URL = os.getenv("AI_API_BASE_URL", "") + "/chat/completions"
 REPO = "WattCoin-Org/wattcoin"
 
 def get_pr_info(pr_number: int) -> dict:
@@ -142,7 +142,7 @@ Output in this exact format:
     }
     
     data = {
-        "model": "grok-beta",
+        "model": os.getenv("AI_REVIEW_MODEL", ""),
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
         "max_tokens": 1500

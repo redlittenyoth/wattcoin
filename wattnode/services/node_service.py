@@ -267,7 +267,7 @@ class NodeService:
         steps = [
             ("PyTorch (AI framework)", "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121"),
             ("Transformers (model loading)", "pip install transformers"),
-            ("Inference engine", "pip install petals"),
+            ("Distributed inference", "pip install petals"),
             ("Accelerate (GPU optimization)", "pip install accelerate"),
         ]
 

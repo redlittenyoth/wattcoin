@@ -65,7 +65,7 @@ ERROR_RED = "#ff4444"
 ACCENT_PURPLE = "#9b59b6"  # WSI / Inference accent
 
 # === CONFIG ===
-API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+API_BASE = os.environ.get("WATTCOIN_API_URL", "")
 CONFIG_FILE = "wattnode_config.json"
 HISTORY_FILE = "wattnode_history.json"
 HEARTBEAT_INTERVAL = 60

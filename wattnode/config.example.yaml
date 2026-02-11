@@ -59,3 +59,9 @@ poll_interval: 5
 # Use environment variable instead:
 #   export WATT_PRIVATE_KEY="your_base58_private_key"
 # Or the daemon will prompt you if needed for signing
+
+# =============================================================================
+# API Connection
+# =============================================================================
+# WattCoin backend URL — set via environment variable:
+#   export WATTCOIN_API_URL="https://your-backend-url.example.com"

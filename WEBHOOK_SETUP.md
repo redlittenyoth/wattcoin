@@ -24,7 +24,7 @@ GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
 GITHUB_TOKEN=ghp_YOUR_GITHUB_TOKEN_HERE
 GROK_API_KEY=xai-YOUR_GROK_API_KEY_HERE
 BOUNTY_WALLET_PRIVATE_KEY=your_private_key_here
-BASE_URL=https://wattcoin-production-81a7.up.railway.app
+BASE_URL=https://your-backend-url.example.com
 ```
 
 ## GitHub Webhook Configuration
@@ -45,7 +45,7 @@ openssl rand -hex 32
 1. Go to: https://github.com/WattCoin-Org/wattcoin/settings/hooks
 2. Click "Add webhook"
 3. Configure:
-   - **Payload URL**: `https://wattcoin-production-81a7.up.railway.app/webhooks/github`
+   - **Payload URL**: `https://your-backend-url.example.com/webhooks/github`
    - **Content type**: `application/json`
    - **Secret**: `<your_generated_secret>` (same as Railway)
    - **Which events**: Select "Let me select individual events"
@@ -57,7 +57,7 @@ openssl rand -hex 32
 ### Step 4: Test Webhook
 ```bash
 # Check webhook health
-curl https://wattcoin-production-81a7.up.railway.app/webhooks/health
+curl https://your-backend-url.example.com/webhooks/health
 # Expected: {"status":"ok","webhook_secret_configured":true}
 ```
 

@@ -20,7 +20,7 @@ from datetime import datetime
 # =============================================================================
 
 WATT_MINT = "Gpmbh4PoQnL1kNgpMYDED3iv4fczcr7d3qNBLf8rpump"
-API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+API_BASE = os.environ.get("WATTCOIN_API_URL", "")
 BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
 TREASURY_WALLET = "Atu5phbGGGFogbKhi259czz887dSdTfXwJxwbuE5aF5q"
 SOLANA_RPC = "https://solana.publicnode.com"

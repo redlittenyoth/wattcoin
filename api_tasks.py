@@ -147,7 +147,7 @@ def ai_verify_submission(task, submission):
     """
     Use AI to verify task completion quality.
     Returns (score, feedback, extra) tuple.
-    extra is a dict with dimensions, confidence, novel_patterns for WSI training data.
+    extra is a dict with dimensions, confidence, novel_patterns for structured AI review output.
     For backward compat, callers using (score, feedback) = ... will still work via unpacking.
     """
     def _is_retryable_error(err: Exception) -> bool:

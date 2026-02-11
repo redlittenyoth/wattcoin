@@ -1,7 +1,7 @@
 # SwarmSolve API Documentation
 
 **Version:** 1.2
-**Base URL:** `https://wattcoin-production-81a7.up.railway.app`
+**Base URL:** `https://your-backend-url.example.com`
 
 ---
 

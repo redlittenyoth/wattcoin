@@ -83,7 +83,7 @@ Wait for: `✅ Build successful` → `✅ Deployed`
 
 Test health endpoint:
 ```bash
-curl https://wattcoin-production-81a7.up.railway.app/webhooks/health
+curl https://your-backend-url.example.com/webhooks/health
 ```
 
 Expected response:
@@ -98,7 +98,7 @@ Expected response:
 3. Fill in:
 
 ```
-Payload URL: https://wattcoin-production-81a7.up.railway.app/webhooks/github
+Payload URL: https://your-backend-url.example.com/webhooks/github
 Content type: application/json
 Secret: [paste same GITHUB_WEBHOOK_SECRET from Railway]
 ```
@@ -129,7 +129,7 @@ Test PR to verify bounty system works
 Then:
 ```bash
 # Test review endpoint
-curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/review_pr \
+curl -X POST https://your-backend-url.example.com/api/v1/review_pr \
   -H "Content-Type: application/json" \
   -d '{
     "pr_url": "https://github.com/WattCoin-Org/wattcoin/pull/[NUMBER]"

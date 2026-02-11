@@ -105,7 +105,7 @@ Run a light node on any device, earn WATT for completing jobs:
 | `/api/v1/reputation` | GET | Free | Contributor leaderboard |
 | `/api/v1/pricing` | GET | Free | Service pricing |
 
-**Base URL**: `https://wattcoin-production-81a7.up.railway.app`
+**Base URL**: `https://your-backend-url.example.com`
 
 ## 🤖 For AI Agents
 

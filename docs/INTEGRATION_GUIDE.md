@@ -86,7 +86,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 1. Go to: https://github.com/WattCoin-Org/wattcoin/settings/hooks
 2. Click "Add webhook"
-3. Set Payload URL: `https://wattcoin-production-81a7.up.railway.app/webhooks/github`
+3. Set Payload URL: `https://your-backend-url.example.com/webhooks/github`
 4. Set Content type: `application/json`
 5. Set Secret: (use same as GITHUB_WEBHOOK_SECRET env var)
 6. Select events: "Let me select individual events"
@@ -99,7 +99,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 After deployment:
 ```bash
 # Test webhook health
-curl https://wattcoin-production-81a7.up.railway.app/webhooks/health
+curl https://your-backend-url.example.com/webhooks/health
 
 # Should return:
 # {"status": "ok", "webhook_secret_configured": true}

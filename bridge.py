@@ -37,7 +37,7 @@ claude_client = None
 def init_clients():
     global grok_client, claude_client
     if GROK_API_KEY:
-        grok_client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
+        grok_client = OpenAI(api_key=GROK_API_KEY, base_url=os.getenv("AI_API_BASE_URL", ""))
     if CLAUDE_API_KEY:
         claude_client = Anthropic(api_key=CLAUDE_API_KEY)
 
@@ -150,7 +150,7 @@ def query_grok(prompt, history):
     messages = [{"role": "system", "content": get_grok_system()}]
     messages.extend(history[-MAX_HISTORY:])
     messages.append({"role": "user", "content": prompt})
-    response = grok_client.chat.completions.create(model="grok-4-1-fast-reasoning", messages=messages, max_tokens=2048)
+    response = grok_client.chat.completions.create(model=os.getenv("AI_CHAT_MODEL", ""), messages=messages, max_tokens=2048)
     return response.choices[0].message.content
 
 def query_claude(prompt, history):

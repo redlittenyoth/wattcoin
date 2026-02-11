@@ -663,12 +663,6 @@ SCAN DIMENSIONS (evaluate each explicitly):
 Be strict — if in doubt, FAIL. The customer is paying real money for this code.
 Only PASS if the code is clearly safe for customer deployment across ALL dimensions.
 
-TRAINING CONTEXT: Your evaluation will be used as labeled training data for a self-improving code intelligence model (WSI). To maximize training signal quality:
-- Be explicit about your reasoning for EVERY dimension. Do not give surface-level assessments.
-- Name specific code patterns you checked and explain WHY they are safe or dangerous.
-- If a dimension is not applicable, explain why.
-- Your reasoning is as valuable as your verdict — "PASS: looks fine" teaches nothing.
-
 Respond ONLY with valid JSON:
 {{
   "verdict": "PASS",

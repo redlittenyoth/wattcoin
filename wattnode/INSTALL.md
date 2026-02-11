@@ -217,5 +217,5 @@ chmod +x wattnode.py
 ### "Connection refused" on Raspberry Pi
 Ensure you have internet:
 ```bash
-ping wattcoin-production-81a7.up.railway.app
+ping your-backend-url.example.com
 ```

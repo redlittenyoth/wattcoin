@@ -286,14 +286,14 @@ For now, you can earn WATT through PR bounties and prepare by holding stake. Fol
 
 ### Test Balance Check
 ```bash
-curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/status \
+curl -X POST https://your-backend-url.example.com/api/v1/wsi/status \
   -H "Content-Type: application/json" \
   -d '{"wallet": "YOUR_WALLET_ADDRESS"}'
 ```
 
 ### Test Chat
 ```bash
-curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/chat \
+curl -X POST https://your-backend-url.example.com/api/v1/wsi/chat \
   -H "Content-Type: application/json" \
   -d '{
     "wallet": "YOUR_WALLET_ADDRESS",
@@ -303,7 +303,7 @@ curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/chat \
 
 ### Test System Info
 ```bash
-curl https://wattcoin-production-81a7.up.railway.app/api/v1/wsi/info
+curl https://your-backend-url.example.com/api/v1/wsi/info
 ```
 
 ---

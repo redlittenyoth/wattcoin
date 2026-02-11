@@ -106,7 +106,7 @@ SCAN_PATTERNS = [
         "severity": "high",
         "pattern": re.compile(r'(?:secret|password|passwd|api_key|apikey|private_key|auth_token)\s*[=:]\s*["\'][a-zA-Z0-9_\-/.]{8,}["\']', re.IGNORECASE),
         "description": "Hardcoded secret or credential",
-        "exclude_contexts": ["os.getenv", "env var", "example", "placeholder", '""', "''"],
+        "exclude_contexts": ["os.getenv", "env var", "example", "placeholder", "your_", '""', "''"],
     },
     {
         "id": "private_key_base58",
@@ -131,7 +131,7 @@ SCAN_PATTERNS = [
         "severity": "medium",
         "pattern": re.compile(r'(?:petals|PetalsNodeService|petals_)', re.IGNORECASE),
         "description": "Petals framework vendor reference",
-        "exclude_contexts": ["import petals", "from petals"],  # Unavoidable package imports
+        "exclude_contexts": ["import petals", "from petals", "pip install petals", "petals.cli"],  # Unavoidable package references
     },
 
     # --- Personal Identifiers ---
@@ -301,6 +301,15 @@ def fetch_file_content(file_sha):
         return data.get("content", "")
     except Exception as e:
         return None
+
+
+# Files that contain scan pattern definitions — exclude from scanning (self-reference)
+SCANNER_EXCLUSIONS = {
+    "security_scanner.py",
+    ".github/scripts/leak_scanner.py",
+    "scraper_errors.py",  # Contains test constants, not real secrets
+    "internal_pipeline.py",  # Legitimately references internal repo
+}
 
 
 def run_full_scan():

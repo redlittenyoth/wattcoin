@@ -469,9 +469,9 @@ def call_ai_review_internal(pr_info):
     """
     Deep project-aware AI review for internal repo PRs.
     Includes full architecture context, attack patterns, wallet addresses.
-    Produces highest-quality WSI training data.
+    Enhanced context for internal code review.
     
-    Version: 1.0.0 (WSI Prompt Architecture — Prompt 2)
+    Version: 1.0.0 (Internal Review Prompt)
     """
     if not AI_API_KEY:
         return {"error": "AI_API_KEY not configured"}
@@ -482,13 +482,13 @@ def call_ai_review_internal(pr_info):
         files_list = ", ".join(f.get("filename", "") for f in pr_info["files"][:20])
 
     # Load sensitive architecture context from env var (never in git)
-    internal_context = os.getenv("WSI_INTERNAL_CONTEXT", "")
+    internal_context = os.getenv("INTERNAL_REVIEW_CONTEXT", "")
     if not internal_context:
         # Fallback: use generic review (same as public) if env var not set
-        print("[INTERNAL-REVIEW] WSI_INTERNAL_CONTEXT not set — falling back to generic review", flush=True)
+        print("[INTERNAL-REVIEW] INTERNAL_REVIEW_CONTEXT not set — falling back to generic review", flush=True)
         return call_ai_review(pr_info)
 
-    prompt = f"""You are the senior code reviewer for WattCoin's internal development pipeline. Your reviews serve dual purposes: (1) ensuring production quality for critical infrastructure, and (2) generating high-fidelity training data for WSI, WattCoin's self-improving code intelligence model.
+    prompt = f"""You are the senior code reviewer for WattCoin's internal development pipeline. Your reviews ensure production quality for critical infrastructure.
 
 {internal_context}
 
@@ -535,7 +535,7 @@ Clean, readable, follows existing patterns. Proper error handling, logging, edge
 Solves the stated task completely. Would survive production traffic. Handles error cases gracefully.
 
 ### 8. Ecosystem Impact (MEDIUM)
-How does this change affect the broader WattCoin ecosystem? Does it improve the agent self-improvement flywheel? Does it create new utility for WATT? Does it strengthen or weaken any existing system?
+How does this change affect the broader WattCoin ecosystem? Does it improve the agent ecosystem? Does it create new utility for WATT? Does it strengthen or weaken any existing system?
 
 ## Scoring
 - 10: Production-ready, improves architecture

@@ -2,7 +2,7 @@
 
 The WattCoin Scraper API allows agents to fetch web content programmatically.
 
-**Base URL:** `https://wattcoin-production-81a7.up.railway.app`
+**Base URL:** `https://your-backend-url.example.com`
 
 **Cost:** 100 WATT per request (or API key bypass)
 
@@ -86,7 +86,7 @@ POST /api/v1/scrape
 # 1. Send 100 WATT to 7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF
 # 2. Use tx signature in request:
 
-curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
+curl -X POST "https://your-backend-url.example.com/api/v1/scrape" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com",
@@ -98,7 +98,7 @@ curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
 ### cURL (with API key)
 
 ```bash
-curl -X POST "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape" \
+curl -X POST "https://your-backend-url.example.com/api/v1/scrape" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{"url": "https://example.com"}'
@@ -113,7 +113,7 @@ from spl.token.instructions import transfer
 import requests
 
 BOUNTY_WALLET = "7vvNkG3JF3JpxLEavqZSkc5T3n9hHR98Uw23fbWdXVSF"
-API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+API_BASE = "https://your-backend-url.example.com"
 
 # 1. Send 100 WATT (implement your transfer logic)
 tx_signature = send_watt(BOUNTY_WALLET, 100)
@@ -139,7 +139,7 @@ if data["success"]:
 ```javascript
 // After sending 100 WATT...
 const response = await fetch(
-  "https://wattcoin-production-81a7.up.railway.app/api/v1/scrape",
+  "https://your-backend-url.example.com/api/v1/scrape",
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },

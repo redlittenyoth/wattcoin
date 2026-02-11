@@ -109,7 +109,7 @@ Create PR with this format in the body:
 Call the review endpoint (or maintainer calls it):
 
 ```bash
-curl -X POST https://wattcoin-production-81a7.up.railway.app/api/v1/review_pr \
+curl -X POST https://your-backend-url.example.com/api/v1/review_pr \
   -H "Content-Type: application/json" \
   -d '{
     "pr_url": "https://github.com/WattCoin-Org/wattcoin/pull/123",

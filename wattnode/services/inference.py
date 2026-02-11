@@ -29,9 +29,9 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama2")
 OLLAMA_TIMEOUT = 120
 
 # Distributed inference gateway (runs on seed node alongside inference server)
-DISTRIBUTED_GATEWAY_URL = os.environ.get("DISTRIBUTED_GATEWAY_URL", os.environ.get("PETALS_GATEWAY_URL", "http://localhost:8090"))
+DISTRIBUTED_GATEWAY_URL = os.environ.get("DISTRIBUTED_GATEWAY_URL", "http://localhost:8090")
 DISTRIBUTED_GATEWAY_KEY = os.environ.get("WSI_GATEWAY_KEY", "")
-DISTRIBUTED_MODEL = os.environ.get("DISTRIBUTED_MODEL", os.environ.get("PETALS_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct"))
+DISTRIBUTED_MODEL = os.environ.get("DISTRIBUTED_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
 DISTRIBUTED_TIMEOUT = 180  # Distributed inference can be slower
 
 
@@ -205,7 +205,7 @@ def get_backend(backend=None):
     backend = backend or INFERENCE_BACKEND
     if backend == "ollama":
         return OllamaBackend()
-    elif backend in ("distributed", "petals"):
+    elif backend in ("distributed",):
         return DistributedBackend()
     else:  # auto
         return None  # Handled by generate()
@@ -220,7 +220,7 @@ def generate(prompt, model=None, max_tokens=500, temperature=0.7, backend=None):
     """
     backend_name = backend or INFERENCE_BACKEND
 
-    if backend_name in ("distributed", "petals"):
+    if backend_name in ("distributed",):
         return DistributedBackend().generate(prompt, model=model, max_tokens=max_tokens, temperature=temperature)
 
     if backend_name == "ollama":
@@ -245,7 +245,7 @@ def generate(prompt, model=None, max_tokens=500, temperature=0.7, backend=None):
 
 def check_available():
     """Check if any inference backend is available."""
-    if INFERENCE_BACKEND in ("distributed", "petals"):
+    if INFERENCE_BACKEND in ("distributed",):
         return DistributedBackend().is_available()
     if INFERENCE_BACKEND == "ollama":
         return OllamaBackend().is_available()
