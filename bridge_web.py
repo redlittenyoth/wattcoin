@@ -1,10 +1,15 @@
 """
-AI-Claude Bridge - Web Interface v2.2.0
+AI-Claude Bridge - Web Interface v2.2.1
 Human-in-the-loop AI collaboration for WattCoin project
 + Proxy endpoint for external API calls (Moltbook, etc.)
 + Admin dashboard for bounty management
 + Paid scraper API (100 WATT per scrape)
 + WattNode routing for distributed compute
++ Service health check API
+
+CHANGELOG v2.2.1:
+- Added /api/v1/health endpoint for service monitoring
+- Checks for AI API keys, Discord webhook, and active WattNodes
 
 CHANGELOG v2.1.0:
 - WattNode network support - route scrape jobs to registered nodes
@@ -711,6 +716,43 @@ HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+@app.route('/api/v1/health', methods=['GET'])
+@limiter.exempt
+def health_check():
+    """
+    Health check endpoint for monitoring service status.
+    Returns status of AI keys, active nodes, and other critical services.
+    """
+    ai_status = "ok" if AI_API_KEY else "missing"
+    claude_status = "ok" if CLAUDE_API_KEY else "missing"
+    discord_status = "ok" if os.getenv("DISCORD_WEBHOOK_URL") else "missing"
+    
+    try:
+        active_nodes = get_active_nodes()
+        node_count = len(active_nodes)
+    except Exception as e:
+        logger.error(f"Health check node error: {e}")
+        node_count = 0
+        
+    status = "ok"
+    if ai_status != "ok" or claude_status != "ok":
+        status = "degraded"
+        
+    return jsonify({
+        "status": status,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "services": {
+            "openai": ai_status,
+            "claude": claude_status,
+            "discord": discord_status,
+            "wattnodes": {
+                "count": node_count,
+                "status": "ok" if node_count > 0 else "no_nodes"
+            }
+        },
+        "version": "2.2.1"
+    }), 200
 
 @app.route('/')
 def index():
