@@ -172,7 +172,7 @@ claude_client = None
 def init_clients():
     global ai_client, claude_client
     if AI_API_KEY:
-        ai_client = OpenAI(api_key=AI_API_KEY, base_url="https://api.x.ai/v1")
+        ai_client = OpenAI(api_key=AI_API_KEY, base_url=os.getenv("AI_API_BASE_URL", ""))
     if CLAUDE_API_KEY:
         claude_client = Anthropic(api_key=CLAUDE_API_KEY)
 
@@ -490,7 +490,7 @@ def query_ai(prompt, history=[]):
     messages.append({"role": "user", "content": prompt})
     
     response = ai_client.chat.completions.create(
-        model="grok-3",
+        model=os.getenv("AI_CHAT_MODEL", ""),
         messages=messages,
         max_tokens=2048
     )
@@ -1224,7 +1224,7 @@ def llm_query():
         ]
         
         response = ai_client.chat.completions.create(
-            model="grok-3",
+            model=os.getenv("AI_CHAT_MODEL", ""),
             messages=messages,
             max_tokens=2048
         )
@@ -1497,6 +1497,7 @@ def bounty_stats():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 

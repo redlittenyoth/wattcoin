@@ -46,9 +46,9 @@ webhooks_bp = Blueprint('webhooks', __name__)
 
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-BASE_URL = os.getenv("BASE_URL", "https://wattcoin-production-81a7.up.railway.app")  # For internal API calls
+BASE_URL = os.getenv("BASE_URL", "")  # For internal API calls
 REPO = "WattCoin-Org/wattcoin"
-INTERNAL_REPO = "WattCoin-Org/wattcoin-internal"
+INTERNAL_REPO = os.getenv("INTERNAL_REPO", "")
 
 PR_REVIEWS_FILE = f"{DATA_DIR}/pr_reviews.json"
 PR_PAYOUTS_FILE = f"{DATA_DIR}/pr_payouts.json"
@@ -573,7 +573,7 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
         # Get bounty wallet keypair from env
         private_key_b58 = os.getenv("BOUNTY_WALLET_PRIVATE_KEY", "")
         if not private_key_b58:
-            return None, "BOUNTY_WALLET_PRIVATE_KEY not configured in Railway"
+            return None, "BOUNTY_WALLET_PRIVATE_KEY not configured"
         
         print(f"[PAYMENT] Initializing payment: {amount:,} WATT to {wallet[:8]}...{wallet[-8:]}", flush=True)
         
@@ -2523,6 +2523,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 
