@@ -546,7 +546,7 @@ def auto_merge_pr(pr_number, review_score):
     except Exception as e:
         return False, f"Merge error: {e}"
 
-def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None):
+def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review_score=None, memo_override=None):
     """
     Execute payment directly to contributor wallet.
     Looks up recipient's actual token account from blockchain.
@@ -666,9 +666,12 @@ def execute_auto_payment(pr_number, wallet, amount, bounty_issue_id=None, review
         
         # Create memo instruction with proof-of-work details
         memo_program = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
-        issue_str = f"Issue #{bounty_issue_id}" if bounty_issue_id else "Issue #N/A"
-        score_str = f"Score: {review_score}/10" if review_score else "Score: N/A"
-        memo_text = f"WattCoin Bounty | PR #{pr_number} | {issue_str} | {score_str} | {amount:,.0f} WATT | Thank you!"
+        if memo_override:
+            memo_text = memo_override
+        else:
+            issue_str = f"Issue #{bounty_issue_id}" if bounty_issue_id else "Issue #N/A"
+            score_str = f"Score: {review_score}/10" if review_score else "Score: N/A"
+            memo_text = f"WattCoin Bounty | PR #{pr_number} | {issue_str} | {score_str} | {amount:,.0f} WATT | Thank you!"
         
         memo_ix = Instruction(
             program_id=memo_program,
@@ -2520,6 +2523,7 @@ def webhook_health():
         "webhook_secret_configured": bool(GITHUB_WEBHOOK_SECRET),
         "pending_payments": pending_count
     }), 200
+
 
 
 

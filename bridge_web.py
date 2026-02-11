@@ -125,7 +125,7 @@ from api_tasks import tasks_bp
 from api_nodes import nodes_bp, create_job, wait_for_job_result, cancel_job, get_active_nodes
 from api_pr_review import pr_review_bp
 from api_webhooks import webhooks_bp, process_payment_queue, load_reputation_data
-from api_wsi import wsi_bp
+from api_wsi import wsi_bp, process_wsi_payout_queue
 from api_swarmsolve import swarmsolve_bp
 from data_backup import backup_bp
 from internal_pipeline import internal_bp
@@ -190,9 +190,31 @@ def _startup_payment_check():
         process_payment_queue()
     except Exception as e:
         print(f"[STARTUP] Payment queue processing error: {e}", flush=True)
+    try:
+        process_wsi_payout_queue()
+    except Exception as e:
+        print(f"[STARTUP] WSI payout queue processing error: {e}", flush=True)
 
 threading.Thread(target=_startup_payment_check, daemon=True).start()
 print("[STARTUP] Payment queue check scheduled (15s delay)", flush=True)
+
+# Periodic WSI payout processing — runs every 5 minutes
+# (Bounty payouts trigger on deploy; WSI queries don't cause deploys)
+WSI_PAYOUT_INTERVAL = int(os.environ.get('WSI_PAYOUT_INTERVAL', '300'))  # seconds, default 5 min
+
+def _periodic_wsi_payout():
+    """Process WSI payout queue on a recurring interval."""
+    import time
+    time.sleep(60)  # Initial delay — let startup processing finish first
+    while True:
+        try:
+            process_wsi_payout_queue()
+        except Exception as e:
+            print(f"[WSI-TIMER] Payout processing error: {e}", flush=True)
+        time.sleep(WSI_PAYOUT_INTERVAL)
+
+threading.Thread(target=_periodic_wsi_payout, daemon=True).start()
+print(f"[STARTUP] WSI payout timer scheduled (every {WSI_PAYOUT_INTERVAL}s)", flush=True)
 
 # =============================================================================
 # SCRAPER CONFIG (v0.1)
@@ -1475,6 +1497,7 @@ def bounty_stats():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 

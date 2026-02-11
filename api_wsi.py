@@ -10,7 +10,7 @@ Endpoints:
 - GET  /api/v1/wsi/models     - Available models on the network
 - POST /api/v1/wsi/contribute - Nodes report inference contributions
 
-Version: 2.0.0
+Version: 2.2.0
 """
 
 import os
@@ -608,7 +608,7 @@ def wsi_info():
 
     return jsonify({
         "system": "WattCoin SuperIntelligence (WSI)",
-        "version": "2.0.0",
+        "version": "2.2.0",
         "phase": "Phase 1: Distributed Inference",
         "architecture": "Distributed swarm — model layers distributed across WattNode operators",
         "requirements": {
@@ -678,7 +678,10 @@ def wsi_contribute():
         return jsonify({"success": False, "error": "Request body required"}), 400
 
     # Auth check — shared secret between gateway and Railway API
-    if WSI_GATEWAY_KEY and data.get("gateway_key") != WSI_GATEWAY_KEY:
+    # FAIL-CLOSED: If no key configured, endpoint is disabled (not open)
+    if not WSI_GATEWAY_KEY:
+        return jsonify({"success": False, "error": "WSI contributions disabled — gateway key not configured"}), 503
+    if data.get("gateway_key") != WSI_GATEWAY_KEY:
         return jsonify({"success": False, "error": "Invalid gateway key"}), 403
 
     node_id = data.get("node_id", "").strip()
@@ -690,6 +693,9 @@ def wsi_contribute():
 
     if not node_id or not wallet or not query_id:
         return jsonify({"success": False, "error": "node_id, wallet, and query_id required"}), 400
+
+    if blocks_served <= 0:
+        return jsonify({"success": False, "error": "blocks_served must be > 0"}), 400
 
     record_contribution(node_id, wallet, query_id, blocks_served, latency_ms, model)
 
@@ -708,6 +714,151 @@ def wsi_contribute():
 
 
 # =============================================================================
+# WSI PAYOUT QUEUE PROCESSOR
+# =============================================================================
+
+def process_wsi_payout_queue():
+    """
+    Process pending WSI inference payouts from wsi_payout_queue.json.
+    Called on startup and periodically via timer.
+    
+    FAIL-CLOSED: If Solana RPC is down, bounty wallet has insufficient SOL,
+    or any error occurs — entries stay in pending for next cycle. Never dropped.
+    """
+    from datetime import datetime
+    
+    queue = load_json(WSI_PAYOUT_QUEUE_FILE, {"pending": [], "processed": []})
+    pending = [p for p in queue.get("pending", []) if p.get("status", "pending") == "pending"]
+    
+    if not pending:
+        return
+    
+    print(f"[WSI-QUEUE] Processing {len(pending)} pending WSI payout(s)...", flush=True)
+    
+    # Import the payment executor from the bounty system
+    try:
+        from api_webhooks import execute_auto_payment
+    except ImportError as e:
+        print(f"[WSI-QUEUE] ❌ Cannot import payment executor: {e}", flush=True)
+        return
+    
+    processed_count = 0
+    failed_count = 0
+    
+    for entry in pending:
+        node_id = entry.get("node_id", "unknown")
+        wallet = entry.get("wallet", "")
+        query_id = entry.get("query_id", "")
+        reward = entry.get("reward_watt", 0)
+        
+        if not wallet or reward <= 0:
+            # Invalid entry — mark as failed, don't retry
+            entry["status"] = "failed"
+            entry["error"] = "Invalid wallet or zero reward"
+            entry["failed_at"] = datetime.utcnow().isoformat() + "Z"
+            print(f"[WSI-QUEUE] ⚠️ Skipping invalid entry: {query_id}", flush=True)
+            continue
+        
+        # Check retry count — max 3 attempts
+        retry_count = entry.get("retry_count", 0)
+        if retry_count >= 3:
+            entry["status"] = "failed"
+            entry["error"] = "Max retries (3) exhausted"
+            entry["failed_at"] = datetime.utcnow().isoformat() + "Z"
+            failed_count += 1
+            
+            notify_wsi_discord(
+                "❌ WSI Payout Failed",
+                f"Node `{node_id[:16]}` — {reward} WATT to `{wallet[:8]}...`\nMax retries exhausted for query `{query_id}`",
+                color=0xFF0000
+            )
+            print(f"[WSI-QUEUE] ❌ Max retries for {query_id}", flush=True)
+            continue
+        
+        print(f"[WSI-QUEUE] Processing: {reward} WATT to {wallet[:8]}... (query: {query_id})", flush=True)
+        
+        try:
+            # Build WSI-specific on-chain memo
+            wsi_memo = f"WSI Payout | Node: {node_id[:16]} | Query: {query_id} | {reward} WATT"
+            
+            tx_sig, error = execute_auto_payment(
+                pr_number=0,  # No PR — WSI payout
+                wallet=wallet,
+                amount=reward,
+                bounty_issue_id=None,
+                review_score=None,
+                memo_override=wsi_memo
+            )
+            
+            if tx_sig and not error:
+                # Success
+                entry["status"] = "processed"
+                entry["tx_signature"] = tx_sig
+                entry["processed_at"] = datetime.utcnow().isoformat() + "Z"
+                processed_count += 1
+                
+                # Move to processed list
+                queue["processed"].append(entry)
+                
+                notify_wsi_discord(
+                    "💰 WSI Payout Sent",
+                    f"Node `{node_id[:16]}` earned **{reward} WATT**\n"
+                    f"[View on Solscan](https://solscan.io/tx/{tx_sig})",
+                    color=0x00FF00,
+                    fields={
+                        "Query": query_id,
+                        "Split": f"{entry.get('payout_pct', 70)}% node / {100 - entry.get('payout_pct', 70)}% treasury",
+                        "TX": f"{tx_sig[:16]}..."
+                    }
+                )
+                print(f"[WSI-QUEUE] ✅ Paid {reward} WATT — TX: {tx_sig[:16]}...", flush=True)
+                
+            elif tx_sig and error:
+                # TX sent but confirmation uncertain — mark with signature, retry
+                entry["status"] = "pending"
+                entry["retry_count"] = retry_count + 1
+                entry["last_tx_attempt"] = tx_sig
+                entry["last_error"] = str(error)
+                entry["last_retry_at"] = datetime.utcnow().isoformat() + "Z"
+                print(f"[WSI-QUEUE] ⚠️ TX sent but unconfirmed: {tx_sig[:16]}... — will retry", flush=True)
+                
+            else:
+                # Failed — leave in pending for retry (FAIL-CLOSED)
+                entry["status"] = "pending"
+                entry["retry_count"] = retry_count + 1
+                entry["last_error"] = str(error)
+                entry["last_retry_at"] = datetime.utcnow().isoformat() + "Z"
+                failed_count += 1
+                print(f"[WSI-QUEUE] ⚠️ Payout failed: {error} — retry {retry_count + 1}/3", flush=True)
+                
+        except Exception as e:
+            # Any exception — leave in pending (FAIL-CLOSED)
+            entry["status"] = "pending"
+            entry["retry_count"] = retry_count + 1
+            entry["last_error"] = str(e)
+            entry["last_retry_at"] = datetime.utcnow().isoformat() + "Z"
+            failed_count += 1
+            print(f"[WSI-QUEUE] ❌ Exception: {e} — retry {retry_count + 1}/3", flush=True)
+    
+    # Remove processed entries from pending list
+    queue["pending"] = [p for p in queue["pending"] if p.get("status") == "pending"]
+    
+    # Also move failed entries out of pending
+    failed_entries = [p for p in queue.get("pending", []) if p.get("status") == "failed"]
+    for f in failed_entries:
+        queue["processed"].append(f)
+    queue["pending"] = [p for p in queue["pending"] if p.get("status") not in ("processed", "failed")]
+    
+    # Keep processed list manageable (last 1000)
+    if len(queue.get("processed", [])) > 1000:
+        queue["processed"] = queue["processed"][-1000:]
+    
+    save_json(WSI_PAYOUT_QUEUE_FILE, queue)
+    
+    print(f"[WSI-QUEUE] Done — {processed_count} paid, {failed_count} failed/retrying, {len(queue['pending'])} remaining", flush=True)
+
+
+# =============================================================================
 # HEALTH
 # =============================================================================
 
@@ -716,7 +867,8 @@ def wsi_health():
     """Health check for WSI service."""
     return jsonify({
         "service": "wsi",
-        "version": "2.0.0",
+        "version": "2.2.0",
         "gateway_configured": bool(WSI_GATEWAY_URL),
         "status": "ok"
     }), 200
+
