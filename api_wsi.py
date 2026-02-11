@@ -699,11 +699,19 @@ def wsi_contribute():
 
     record_contribution(node_id, wallet, query_id, blocks_served, latency_ms, model)
 
+    # Sanitize model name for public Discord — strip vendor org prefix (e.g., "Qwen/Qwen2.5-7B-Instruct" → "7B-Instruct")
+    display_model = model.split("/")[-1] if model else "unknown"
+    # Also strip common model family prefixes for cleaner display
+    for prefix in ["Qwen2.5-", "Qwen2-", "Meta-Llama-", "Llama-"]:
+        if display_model.startswith(prefix):
+            display_model = display_model[len(prefix):]
+            break
+
     notify_wsi_discord(
         "🧠 WSI Inference Contribution",
         f"Node `{node_id[:16]}` served {blocks_served} blocks for query `{query_id}`",
         color=0x9B59B6,
-        fields={"Model": model, "Latency": f"{latency_ms}ms", "Reward": f"{WSI_QUERY_COST * WSI_NODE_PAYOUT_PCT // 100} WATT ({WSI_NODE_PAYOUT_PCT}%)"}
+        fields={"Model": display_model, "Latency": f"{latency_ms}ms", "Reward": f"{WSI_QUERY_COST * WSI_NODE_PAYOUT_PCT // 100} WATT ({WSI_NODE_PAYOUT_PCT}%)"}
     )
 
     return jsonify({
