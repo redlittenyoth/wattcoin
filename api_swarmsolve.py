@@ -693,6 +693,16 @@ Do not include any text before or after the JSON."""
             return False, f"Safety scan unavailable: AI audit service error ({ai_error}). Service may be temporarily unavailable. Try again or admin override.", False
 
         print(f"[SWARMSOLVE] Safety scan result: {report[:200]}...", flush=True)
+        
+        # Save evaluation (non-blocking)
+        try:
+            from eval_logger import save_evaluation
+            save_evaluation("swarmsolve_audit", report, {
+                "pr_number": pr_number,
+                "target_repo": target_repo or REPO,
+            })
+        except Exception:
+            pass
 
         # --- Parse: JSON-first, legacy fallback ---
         verdict_pass = None
@@ -1662,4 +1672,5 @@ def archive_solutions():
         "archived": archived,
         "remaining": len(solutions)
     }), 200
+
 

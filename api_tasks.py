@@ -258,6 +258,16 @@ Do not include any text before or after the JSON."""
             time.sleep(sleep_s)
 
         content = ai_content
+        
+        # Save evaluation (non-blocking)
+        try:
+            from eval_logger import save_evaluation
+            save_evaluation("task_verification", content, {
+                "task_id": task.get("id"),
+                "title": task.get("title", ""),
+            })
+        except Exception:
+            pass
 
         # --- Parse response: JSON-first, fallback to legacy SCORE:/FEEDBACK: ---
         score = 0
@@ -1279,4 +1289,5 @@ def task_leaderboard():
     payload = {"success": True, "leaderboard": leaderboard}
     _leaderboard_cache[key] = (now, payload)
     return jsonify(payload)
+
 

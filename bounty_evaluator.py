@@ -108,6 +108,15 @@ def evaluate_bounty_request(issue_title, issue_body, existing_labels=[]):
         result = parse_ai_bounty_response(ai_output)
         result["raw_output"] = ai_output
         
+        # Save evaluation (non-blocking)
+        try:
+            from eval_logger import save_evaluation
+            save_evaluation("bounty_evaluation", ai_output, {
+                "title": issue_title,
+            })
+        except Exception:
+            pass
+        
         return result
         
     except Exception as e:
@@ -184,5 +193,6 @@ def parse_ai_bounty_response(output):
         result["suggested_title"] = title_match.group(1).strip()
     
     return result
+
 
 

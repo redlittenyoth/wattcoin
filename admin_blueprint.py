@@ -441,6 +441,17 @@ Do not include any text before or after the JSON."""
                     parsed["pass"] = False
                     if parsed.get("score", 0) >= 9:
                         parsed["score"] = 8
+                
+                # Save evaluation (non-blocking)
+                try:
+                    from eval_logger import save_evaluation
+                    save_evaluation("pr_review_public", content, {
+                        "pr_number": pr_info.get("number"),
+                        "author": pr_info.get("author", ""),
+                        "title": pr_info.get("title", ""),
+                    })
+                except Exception:
+                    pass
         except (json.JSONDecodeError, Exception):
             pass
         
@@ -594,6 +605,17 @@ Do not include any text before or after the JSON."""
                     parsed["pass"] = False
                     if parsed.get("score", 0) >= 9:
                         parsed["score"] = 8
+                
+                # Save evaluation (non-blocking)
+                try:
+                    from eval_logger import save_evaluation
+                    save_evaluation("pr_review_internal", content, {
+                        "pr_number": pr_info.get("number"),
+                        "author": pr_info.get("author", ""),
+                        "title": pr_info.get("title", ""),
+                    })
+                except Exception:
+                    pass
         except (json.JSONDecodeError, Exception):
             pass
 
@@ -3565,3 +3587,4 @@ def api_security_scan_latest():
     if result:
         return jsonify(result)
     return jsonify(None)
+
