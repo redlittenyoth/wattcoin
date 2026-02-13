@@ -29,6 +29,7 @@ import threading
 import json
 import os
 import sys
+import platform
 import time
 import requests
 import multiprocessing
@@ -65,7 +66,7 @@ ERROR_RED = "#ff4444"
 ACCENT_PURPLE = "#9b59b6"  # WSI / Inference accent
 
 # === CONFIG ===
-API_BASE = "https://wattcoin-production-81a7.up.railway.app"
+API_BASE = os.environ.get("WATTCOIN_API_URL", "")
 CONFIG_FILE = "wattnode_config.json"
 HISTORY_FILE = "wattnode_history.json"
 HEARTBEAT_INTERVAL = 60
@@ -87,9 +88,17 @@ class WattNodeGUI:
                 base_path = sys._MEIPASS
             else:
                 base_path = os.path.dirname(__file__)
-            icon_path = os.path.join(base_path, 'assets', 'icon.ico')
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
+            
+            if platform.system() == "Windows":
+                icon_path = os.path.join(base_path, 'assets', 'icon.ico')
+                if os.path.exists(icon_path):
+                    self.root.iconbitmap(icon_path)
+            else:
+                icon_path = os.path.join(base_path, 'assets', 'logo.png')
+                if os.path.exists(icon_path):
+                    from tkinter import PhotoImage
+                    icon = PhotoImage(file=icon_path)
+                    self.root.tk.call('wm', 'iconphoto', self.root._w, icon)
         except:
             pass
         
