@@ -1,6 +1,6 @@
-# WattNode Windows GUI
+# WattNode Desktop GUI
 
-A desktop application to run WattNode and earn WATT.
+A cross-platform desktop application to run WattNode and earn WATT.
 
 ![WattNode GUI](assets/screenshot.png)
 
@@ -10,90 +10,66 @@ A desktop application to run WattNode and earn WATT.
 1. Download `WattNode-Setup.exe` from [Releases](https://github.com/WattCoin-Org/wattcoin/releases)
 2. Run installer → Next → Install
 3. Launch WattNode from desktop shortcut
-4. Enter your wallet address
-5. Register or link existing node
-6. Click **Start Node** → Start earning!
 
 ### Option 2: Run from Source
 ```powershell
-# Clone repo
-git clone https://github.com/WattCoin-Org/wattcoin.git
-cd wattcoin/wattnode
-
-# Install dependencies
+cd wattnode
 pip install -r requirements_gui.txt
-
-# Run GUI
 python wattnode_gui.py
 ```
 
-## Building the Installer
+## Quick Start (Linux)
 
-### Prerequisites
-- Python 3.9+
-- [Inno Setup](https://jrsoftware.org/isdl.php) (for creating installer)
+### Option 1: Run from Source
+```bash
+# Ubuntu/Debian prerequisites
+sudo apt update && sudo apt install -y python3-tk
 
-### Steps
-```powershell
-cd wattnode
-
-# 1. Add logo to assets folder
-mkdir assets
-# Copy wattcoin_logo.png to assets/logo.png
-
-# 2. Build executable
-python build_windows.py
-
-# 3. Create installer (open in Inno Setup)
-# File → Open → installer.iss → Build → Compile
+# Clone and run
+git clone https://github.com/WattCoin-Org/wattcoin.git
+cd wattcoin/wattnode
+pip3 install -r requirements_gui.txt
+python3 wattnode_gui.py
 ```
 
-Output: `installer_output/WattNode-Setup-1.0.0.exe`
+### Option 2: Build Binary
+```bash
+cd wattnode
+python3 build_linux.py
+chmod +x dist/WattNode
+./dist/WattNode
+```
+
+## Building the Executable
+
+### Windows
+- Requires [PyInstaller](https://pyinstaller.org/)
+- Run `python build_windows.py`
+- Output: `dist/WattNode.exe`
+- (Optional) Use [Inno Setup](https://jrsoftware.org/isdl.php) with `installer.iss` for installer creation
+
+### Linux
+- Requires [PyInstaller](https://pyinstaller.org/)
+- Run `python3 build_linux.py`
+- Output: `dist/WattNode`
 
 ## Features
 
 - ⚡ **One-click start/stop** - No command line needed
+- 🧠 **AI Inference Support** - Tweak blocks, models, and serving status
+- 🔍 **GPU Detection** - Integrated NVIDIA monitoring via `nvidia-smi`
 - 📊 **Live stats** - Jobs completed, WATT earned
-- 🔔 **Activity log** - See jobs in real-time
 - 🎨 **Dark theme** - Matches WattCoin branding
-- 💾 **Auto-save config** - Remembers your settings
-- 🚀 **Auto-payout** - WATT sent directly to your wallet
-
-## Registration
-
-New nodes require a 10,000 WATT stake:
-
-1. Click **Register Node** in the app
-2. Send 10,000 WATT to treasury wallet (shown in app)
-3. Paste transaction signature
-4. Click **Register**
-
-Your stake ensures network integrity. Nodes earn 70% of each job payment.
-
-## Troubleshooting
-
-**"Node not registered"**
-- Complete registration first (10,000 WATT stake required)
-
-**App won't start**
-- Install Visual C++ Redistributable if prompted
-- Try running as administrator
-
-**No jobs received**
-- Check internet connection
-- Verify node is "Running" (green status)
-- Jobs are distributed based on demand
 
 ## Files
 
 | File | Description |
 |------|-------------|
 | `wattnode_gui.py` | Main GUI application |
-| `build_windows.py` | PyInstaller build script |
-| `installer.iss` | Inno Setup installer script |
-| `requirements_gui.txt` | Python dependencies |
-| `assets/logo.png` | WattCoin logo |
-| `assets/icon.ico` | App icon |
+| `build_windows.py` | Windows PyInstaller script |
+| `build_linux.py` | Linux PyInstaller script |
+| `requirements_gui.txt` | GUI dependencies |
+| `requirements_inference.txt` | WSI Inference dependencies |
 
 ## Color Palette
 
